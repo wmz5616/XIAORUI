@@ -1,14 +1,15 @@
-from sqlalchemy import Boolean, Column, ForeignKey, Integer, String, Text, Float, DateTime
+from sqlalchemy import Boolean, Column, ForeignKey, Integer, String, Text, Float, DateTime, JSON
 from sqlalchemy.orm import relationship, sessionmaker, declarative_base
 from sqlalchemy import create_engine
 from datetime import datetime
 
+# 数据库连接
 SQLALCHEMY_DATABASE_URL = "sqlite:///./xiaorui_full_system.db"
 engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
-# 1. 用户与权限 (User & RBAC)
+# 1. 用户与权限
 class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True, index=True)
@@ -17,82 +18,95 @@ class User(Base):
     role = Column(String, default="student")
     full_name = Column(String)
     created_at = Column(DateTime, default=datetime.now)
+    learn_time = Column(Integer, default=0)
     
-    # 关联
     student_records = relationship("LearningRecord", back_populates="student")
     posts = relationship("ForumPost", back_populates="author")
 
-# 2. 课程与资源 (Course & Resources)
+# 2. 课程与资源
 class Course(Base):
     __tablename__ = "courses"
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String, index=True)
     description = Column(Text)
     teacher_id = Column(Integer, ForeignKey("users.id"))
-    status = Column(String, default="draft") # draft, published
+    status = Column(String, default="draft")
     
     nodes = relationship("KnowledgeNode", back_populates="course")
+    resources = relationship("CourseResource", back_populates="course")
+    questions = relationship("Question", back_populates="course")
 
 class CourseResource(Base):
     __tablename__ = "course_resources"
     id = Column(Integer, primary_key=True, index=True)
     course_id = Column(Integer, ForeignKey("courses.id"))
     title = Column(String)
-    type = Column(String) # 'video', 'article', 'quiz'
-    url = Column(String) # 文件路径或外链
+    type = Column(String) 
+    url = Column(String)
+    
+    # ✅ 修复点：补全了这行关联代码
+    course = relationship("Course", back_populates="resources")
 
-# 3. 核心：知识图谱 (Knowledge Graph)
+# 3. 知识图谱
 class KnowledgeNode(Base):
     __tablename__ = "knowledge_nodes"
     id = Column(Integer, primary_key=True, index=True)
     course_id = Column(Integer, ForeignKey("courses.id"))
-    label = Column(String) # 知识点名称
+    label = Column(String)
     description = Column(Text)
-    weight = Column(Float, default=1.0) # 知识点重要性权重
+    weight = Column(Float, default=1.0)
     
     course = relationship("Course", back_populates="nodes")
-    # 边关系将在应用层逻辑中处理，或增加 Edge 表
 
 class KnowledgeEdge(Base):
     __tablename__ = "knowledge_edges"
     id = Column(Integer, primary_key=True, index=True)
-    source_id = Column(Integer, ForeignKey("knowledge_nodes.id")) # 前置知识点
-    target_id = Column(Integer, ForeignKey("knowledge_nodes.id")) # 后续知识点
-    relation_type = Column(String, default="prerequisite") # 关系类型：前置/包含
+    source_id = Column(Integer, ForeignKey("knowledge_nodes.id"))
+    target_id = Column(Integer, ForeignKey("knowledge_nodes.id"))
+    relation_type = Column(String, default="prerequisite")
 
-# 4. 学生学情 (Learning Analytics)
+# 4. 真实题库
+class Question(Base):
+    __tablename__ = "questions"
+    id = Column(Integer, primary_key=True, index=True)
+    course_id = Column(Integer, ForeignKey("courses.id"))
+    content = Column(Text)
+    options_json = Column(String) 
+    correct_answer = Column(Integer) 
+    
+    course = relationship("Course", back_populates="questions")
+
+# 5. 学情记录
 class LearningRecord(Base):
     __tablename__ = "learning_records"
     id = Column(Integer, primary_key=True, index=True)
     student_id = Column(Integer, ForeignKey("users.id"))
     knowledge_node_id = Column(Integer, ForeignKey("knowledge_nodes.id"))
     
-    mastery_level = Column(Float, default=0.0) # 0.0 - 1.0 (掌握程度)
+    mastery_level = Column(Float, default=0.0)
     last_practice_date = Column(DateTime, default=datetime.now)
-    status = Column(String) # 'learning', 'mastered', 'struggling'
+    status = Column(String)
     
     student = relationship("User", back_populates="student_records")
 
-# 5. 社区互动 (Community)
+# 6. 社区
 class ForumPost(Base):
     __tablename__ = "forum_posts"
     id = Column(Integer, primary_key=True, index=True)
     author_id = Column(Integer, ForeignKey("users.id"))
     title = Column(String)
     content = Column(Text)
-    type = Column(String, default="discussion") # 'question', 'discussion'
+    type = Column(String, default="discussion")
     created_at = Column(DateTime, default=datetime.now)
     
     author = relationship("User", back_populates="posts")
 
-# 6. 系统管理 (System Config)
 class SystemConfig(Base):
     __tablename__ = "system_configs"
     id = Column(Integer, primary_key=True, index=True)
-    key = Column(String, unique=True) # e.g., 'ai_model_version', 'recommendation_threshold'
+    key = Column(String, unique=True)
     value = Column(String)
     description = Column(String)
 
-# 初始化表结构
 def init_db():
     Base.metadata.create_all(bind=engine)

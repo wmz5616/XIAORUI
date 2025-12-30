@@ -17,7 +17,7 @@
             </div>
             <div class="stat-item">
               <div class="num">{{ profile.finished_courses }}</div>
-              <div class="label">完成课程</div>
+              <div class="label">已掌握课程</div>
             </div>
           </div>
           <el-divider />
@@ -26,11 +26,11 @@
       </el-col>
 
       <el-col :span="16">
-        <el-card shadow="hover" header="📊 个人能力画像 (AI 评估)">
+        <el-card shadow="hover" header="📊 个人能力画像 (实时数据)">
           <div id="radar-chart" style="width: 100%; height: 400px;"></div>
           <div class="chart-tips">
-            <p>💡 <strong>分析报告：</strong> 你的 <strong>应用能力</strong> 较强，但在 <strong>分析能力</strong> 维度还有提升空间。</p>
-            <p>建议多进行逻辑推理类的专项训练。</p>
+            <p>💡 <strong>数据说明：</strong> 能力值基于你通过的<strong>测验数量</strong>动态计算。</p>
+            <p>通过更多课程测验，点亮更多知识点，雷达图将自动扩张。</p>
           </div>
         </el-card>
       </el-col>
@@ -40,7 +40,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, reactive } from 'vue'
+import { ref, onMounted } from 'vue'
 import axios from 'axios'
 import { useRouter } from 'vue-router'
 import * as echarts from 'echarts'
@@ -51,7 +51,7 @@ const profile = ref({
   role: '',
   learn_time: 0,
   finished_courses: 0,
-  ability_radar: [0,0,0,0,0]
+  ability_radar: [50, 50, 50, 50, 50] // 默认初始值
 })
 
 const logout = () => {
@@ -74,6 +74,10 @@ const fetchProfile = async () => {
 
 const initRadar = (data) => {
   const chartDom = document.getElementById('radar-chart')
+  // 避免重复初始化
+  if (echarts.getInstanceByDom(chartDom)) {
+    echarts.dispose(chartDom);
+  }
   const myChart = echarts.init(chartDom)
   
   const option = {
@@ -87,7 +91,7 @@ const initRadar = (data) => {
       ],
       shape: 'circle',
       splitNumber: 5,
-      axisName: { color: '#428BD4' }
+      axisName: { color: '#428BD4', fontSize: 14 }
     },
     series: [
       {
@@ -97,14 +101,18 @@ const initRadar = (data) => {
           {
             value: data,
             name: '当前能力',
-            areaStyle: { color: 'rgba(64, 158, 255, 0.3)' },
-            itemStyle: { color: '#409EFF' }
+            areaStyle: { color: 'rgba(64, 158, 255, 0.4)' },
+            itemStyle: { color: '#409EFF' },
+            lineStyle: { width: 2 }
           }
         ]
       }
     ]
   }
   myChart.setOption(option)
+  
+  // 响应式大小
+  window.addEventListener('resize', () => myChart.resize())
 }
 
 onMounted(() => {

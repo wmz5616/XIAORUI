@@ -2,10 +2,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import List
-import random
+import json
+from datetime import datetime
 
-# 引入本地模块
-from ..models import SessionLocal, User, LearningRecord, Course
+from ..models import SessionLocal, User, LearningRecord, Course, KnowledgeNode, Question
 from .auth import get_current_user
 
 router = APIRouter(prefix="/quiz", tags=["Quiz & Assessment"])
@@ -14,72 +14,91 @@ def get_db():
     db = SessionLocal(); yield db; db.close()
 
 # --- 模型 ---
-class Question(BaseModel):
+class QuestionModel(BaseModel):
     id: int
     content: str
-    options: List[str] # ["A. xxx", "B. xxx", "C. xxx", "D. xxx"]
-    correct_answer: int # 0, 1, 2, 3 (对应索引)
+    options: List[str]
+    correct_answer: int
 
 class QuizResult(BaseModel):
     score: int
     passed: bool
     mastery_update: str
 
-# --- 模拟题库数据 (实际应存数据库) ---
-# key: course_id
-MOCK_QUESTIONS = {
-    1: [ # 课程ID 1 的题目
-        {"id": 101, "content": "斐波那契数列的第3项是多少？(0, 1, 1, 2...)", "options": ["1", "2", "3", "0"], "correct": 0},
-        {"id": 102, "content": "一元二次方程 ax^2+bx+c=0 的判别式是？", "options": ["b^2-4ac", "b^2+4ac", "2a", "sqrt(abc)"], "correct": 0},
-        {"id": 103, "content": "函数 y=x^2 的图像是？", "options": ["直线", "双曲线", "抛物线", "圆"], "correct": 2},
-    ]
-}
-
-# 1. 获取课程测验题
-@router.get("/{course_id}", response_model=List[Question])
+# 1. 获取真实题目
+@router.get("/{course_id}", response_model=List[QuestionModel])
 def get_quiz(course_id: int, db: Session = Depends(get_db)):
-    # 模拟：随机返回 3 道题
-    questions = MOCK_QUESTIONS.get(course_id, [])
-    if not questions:
-        # 默认题目
-        return [
-            {"id": 999, "content": "本课程的基础概念测试：1+1=？", "options": ["2", "3", "4", "1"], "correct_answer": 0}
-        ]
+    # 从数据库查询该课程的题目
+    db_questions = db.query(Question).filter(Question.course_id == course_id).all()
     
-    # 转换格式
-    return [
-        Question(id=q["id"], content=q["content"], options=q["options"], correct_answer=q["correct"]) 
-        for q in questions
-    ]
+    if not db_questions:
+        return []
+    
+    # 格式转换
+    result = []
+    for q in db_questions:
+        try:
+            opts = json.loads(q.options_json)
+        except:
+            opts = ["解析选项失败"]
+            
+        result.append(QuestionModel(
+            id=q.id,
+            content=q.content,
+            options=opts,
+            correct_answer=q.correct_answer
+        ))
+    return result
 
-# 2. 提交答案并更新掌握度
+# 2. 提交并判分
 @router.post("/{course_id}/submit", response_model=QuizResult)
 def submit_quiz(course_id: int, answers: List[int], current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    # 1. 自动判分
-    questions = MOCK_QUESTIONS.get(course_id, [])
-    if not questions: return {"score": 100, "passed": True, "mastery_update": "无需更新"}
+    # 1. 查库获取标准答案
+    db_questions = db.query(Question).filter(Question.course_id == course_id).all()
+    
+    if not db_questions:
+        return {"score": 0, "passed": False, "mastery_update": "该课程暂无题目"}
     
     correct_count = 0
-    for i, q in enumerate(questions):
-        if i < len(answers) and answers[i] == q["correct"]:
+    # 简单的按顺序比对 (假设前端提交顺序与 DB 查询顺序一致，实际生产可用 ID 映射)
+    for i, q in enumerate(db_questions):
+        if i < len(answers) and answers[i] == q.correct_answer:
             correct_count += 1
             
-    score = int((correct_count / len(questions)) * 100)
+    score = int((correct_count / len(db_questions)) * 100)
     passed = score >= 60
     
-    # 2. 更新学习记录 (核心逻辑：分数驱动图谱)
-    # 查找该学生在该课程的学习记录
-    record = db.query(LearningRecord).filter(
-        LearningRecord.student_id == current_user.id,
-        # 简化：这里假设 LearningRecord 关联的是课程，或者我们更新最近的一条记录
-    ).first()
+    msg = "未通过，请回顾课程内容"
     
-    msg = "保持现状"
+    # 2. 通过则更新数据库记录
     if passed:
-        # 模拟：如果通过，更新知识点掌握度
-        msg = "掌握度提升！图谱节点已变绿"
-        # 实际项目中这里应更新 KnowledgeNode 的 status
-    else:
-        msg = "未通过，建议重新学习前置课程"
+        msg = "通过！知识点已点亮，学习时长已累积"
+        
+        # A. 更新知识点掌握度
+        course_nodes = db.query(KnowledgeNode).filter(KnowledgeNode.course_id == course_id).all()
+        for node in course_nodes:
+            record = db.query(LearningRecord).filter(
+                LearningRecord.student_id == current_user.id,
+                LearningRecord.knowledge_node_id == node.id
+            ).first()
+            
+            if not record:
+                record = LearningRecord(
+                    student_id=current_user.id, 
+                    knowledge_node_id=node.id,
+                    mastery_level=1.0,
+                    status="mastered"
+                )
+                db.add(record)
+            else:
+                record.mastery_level = 1.0
+                record.status = "mastered"
+                record.last_practice_date = datetime.now()
+        
+        # B. 累积学习时长 (模拟：每次通过测验增加 30 分钟)
+        current_user.learn_time += 30
+        db.add(current_user)
+        
+        db.commit()
         
     return {"score": score, "passed": passed, "mastery_update": msg}
