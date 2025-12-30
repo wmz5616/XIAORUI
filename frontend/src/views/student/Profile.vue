@@ -1,7 +1,7 @@
 <template>
   <div class="profile-container">
     <el-row :gutter="20">
-      
+
       <el-col :span="8">
         <el-card shadow="hover" class="info-card">
           <div class="avatar-area">
@@ -26,7 +26,7 @@
       </el-col>
 
       <el-col :span="16">
-        <el-card shadow="hover" header="📊 个人能力画像 (实时数据)">
+        <el-card shadow="hover" header="个人能力画像">
           <div id="radar-chart" style="width: 100%; height: 400px;"></div>
           <div class="chart-tips">
             <p>💡 <strong>数据说明：</strong> 能力值基于你通过的<strong>测验数量</strong>动态计算。</p>
@@ -51,7 +51,7 @@ const profile = ref({
   role: '',
   learn_time: 0,
   finished_courses: 0,
-  ability_radar: [50, 50, 50, 50, 50] // 默认初始值
+  ability_radar: [50, 50, 50, 50, 50]
 })
 
 const logout = () => {
@@ -74,12 +74,11 @@ const fetchProfile = async () => {
 
 const initRadar = (data) => {
   const chartDom = document.getElementById('radar-chart')
-  // 避免重复初始化
   if (echarts.getInstanceByDom(chartDom)) {
     echarts.dispose(chartDom);
   }
   const myChart = echarts.init(chartDom)
-  
+
   const option = {
     radar: {
       indicator: [
@@ -110,8 +109,7 @@ const initRadar = (data) => {
     ]
   }
   myChart.setOption(option)
-  
-  // 响应式大小
+
   window.addEventListener('resize', () => myChart.resize())
 }
 
@@ -121,11 +119,46 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.profile-container { max-width: 1000px; margin: 0 auto; padding: 20px; }
-.avatar-area { text-align: center; padding: 20px 0; }
-.name { margin: 10px 0 5px; color: #303133; }
-.stats-row { display: flex; justify-content: space-around; text-align: center; }
-.num { font-size: 24px; font-weight: bold; color: #409EFF; }
-.label { font-size: 12px; color: #909399; margin-top: 5px; }
-.chart-tips { margin-top: 20px; background: #fdf6ec; padding: 15px; border-radius: 4px; color: #e6a23c; font-size: 14px; }
+.profile-container {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+.avatar-area {
+  text-align: center;
+  padding: 20px 0;
+}
+
+.name {
+  margin: 10px 0 5px;
+  color: #303133;
+}
+
+.stats-row {
+  display: flex;
+  justify-content: space-around;
+  text-align: center;
+}
+
+.num {
+  font-size: 24px;
+  font-weight: bold;
+  color: #409EFF;
+}
+
+.label {
+  font-size: 12px;
+  color: #909399;
+  margin-top: 5px;
+}
+
+.chart-tips {
+  margin-top: 20px;
+  background: #fdf6ec;
+  padding: 15px;
+  border-radius: 4px;
+  color: #e6a23c;
+  font-size: 14px;
+}
 </style>

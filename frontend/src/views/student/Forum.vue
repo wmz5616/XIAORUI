@@ -2,11 +2,13 @@
   <div class="forum-container">
     <div class="header-action">
       <div>
-        <h2>💬 学习讨论区</h2>
+        <h2>学习讨论区</h2>
         <p class="subtitle">与同学和老师交流，解决学习难题</p>
       </div>
       <el-button type="primary" size="large" @click="dialogVisible = true">
-        <el-icon style="margin-right: 5px"><Edit /></el-icon> 我要提问
+        <el-icon style="margin-right: 5px">
+          <Edit />
+        </el-icon> 我要提问
       </el-button>
     </div>
 
@@ -18,13 +20,8 @@
     </div>
 
     <el-timeline style="margin-top: 30px;" v-else-if="posts.length > 0">
-      <el-timeline-item 
-        v-for="post in posts" 
-        :key="post.id" 
-        :timestamp="formatDate(post.created_at)" 
-        placement="top"
-        :color="post.role === 'teacher' ? '#E6A23C' : '#409EFF'"
-      >
+      <el-timeline-item v-for="post in posts" :key="post.id" :timestamp="formatDate(post.created_at)" placement="top"
+        :color="post.role === 'teacher' ? '#E6A23C' : '#409EFF'">
         <el-card shadow="hover" class="post-card">
           <div class="post-header">
             <span class="post-title">{{ post.title }}</span>
@@ -36,10 +33,14 @@
           <p class="post-content">{{ post.content }}</p>
           <div class="post-footer">
             <el-button type="primary" link size="small">
-              <el-icon style="margin-right: 3px"><ChatDotRound /></el-icon> 回复
+              <el-icon style="margin-right: 3px">
+                <ChatDotRound />
+              </el-icon> 回复
             </el-button>
             <el-button type="success" link size="small">
-              <el-icon style="margin-right: 3px"><Star /></el-icon> 点赞
+              <el-icon style="margin-right: 3px">
+                <Star />
+              </el-icon> 点赞
             </el-button>
           </div>
         </el-card>
@@ -71,7 +72,6 @@
 import { ref, onMounted, reactive } from 'vue'
 import axios from 'axios'
 import { ElMessage } from 'element-plus'
-// 显式导入所有用到的图标
 import { Edit, Loading, ChatDotRound, Star } from '@element-plus/icons-vue'
 
 const posts = ref([])
@@ -99,21 +99,21 @@ const fetchPosts = async () => {
 }
 
 const submitPost = async () => {
-  if(!form.title || !form.content) return ElMessage.warning("请填写标题和内容")
-  
+  if (!form.title || !form.content) return ElMessage.warning("请填写标题和内容")
+
   submitting.value = true
   const token = localStorage.getItem('token')
-  
+
   try {
     await axios.post('http://localhost:8000/forum/posts', form, {
       headers: { Authorization: `Bearer ${token}` }
     })
-    
+
     ElMessage.success("发布成功！")
     dialogVisible.value = false
     form.title = ''
     form.content = ''
-    fetchPosts() 
+    fetchPosts()
   } catch (error) {
     if (error.response && error.response.status === 401) {
       ElMessage.error("登录已过期，请重新登录")
@@ -131,13 +131,60 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.forum-container { max-width: 900px; margin: 0 auto; padding: 20px; }
-.header-action { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #f0f0f0; padding-bottom: 20px; margin-bottom: 20px; }
-.subtitle { color: #999; margin: 5px 0 0; font-size: 14px; }
-.post-card { border-radius: 8px; }
-.post-title { font-size: 16px; font-weight: bold; margin-right: 10px; color: #333; }
-.post-header { display: flex; align-items: center; margin-bottom: 12px; }
-.role-badge { font-size: 12px; color: #999; margin-left: 5px; }
-.post-content { color: #555; line-height: 1.6; white-space: pre-wrap; }
-.post-footer { margin-top: 15px; border-top: 1px solid #f9f9f9; padding-top: 10px; text-align: right; }
+.forum-container {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+.header-action {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 2px solid #f0f0f0;
+  padding-bottom: 20px;
+  margin-bottom: 20px;
+}
+
+.subtitle {
+  color: #999;
+  margin: 5px 0 0;
+  font-size: 14px;
+}
+
+.post-card {
+  border-radius: 8px;
+}
+
+.post-title {
+  font-size: 16px;
+  font-weight: bold;
+  margin-right: 10px;
+  color: #333;
+}
+
+.post-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.role-badge {
+  font-size: 12px;
+  color: #999;
+  margin-left: 5px;
+}
+
+.post-content {
+  color: #555;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.post-footer {
+  margin-top: 15px;
+  border-top: 1px solid #f9f9f9;
+  padding-top: 10px;
+  text-align: right;
+}
 </style>

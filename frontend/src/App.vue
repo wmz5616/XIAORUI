@@ -6,7 +6,7 @@
           <el-icon :size="24" style="margin-right: 10px; vertical-align: middle;">
             <Monitor />
           </el-icon>
-          <span>XIAORUI 智适应学习平台</span>
+          <span>XIAORUI智学平台</span>
         </div>
         <div class="user-info">
           <el-avatar :size="32" src="https://cube.elemecdn.com/0/88/03b0d39583f48206768a7534e55bcpng.png"
@@ -32,7 +32,6 @@ const router = useRouter()
 const route = useRoute()
 const username = ref('')
 
-// 监听路由变化，更新用户名
 watchEffect(() => {
   username.value = localStorage.getItem('username') || '访客'
 })

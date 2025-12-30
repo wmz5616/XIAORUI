@@ -2,99 +2,96 @@ import requests
 import json
 import logging
 
-# 配置日志
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class DoubaoService:
     def __init__(self):
-        # ================= 配置区域 =================
-        # 1. 你的 API Key
         self.api_key = "28a77d37-c75b-46e6-a56f-c16bc6d45610"
-        
-        # 2. 你的 Model ID (之前验证成功的那个)
         self.model = "doubao-seed-1-6-251015"
-        
-        # 3. 火山引擎 API 地址
         self.api_url = "https://ark.cn-beijing.volces.com/api/v3/chat/completions"
-        # ===========================================
 
-    def generate_learning_path(self, student_profile: dict, weak_points: list):
-        # 构造 Prompt
-        prompt = f"""
-        你是一位资深的教育专家系统。
-        学生信息：姓名 {student_profile.get('name')}，{student_profile.get('grade')}年级。
-        薄弱点：{', '.join(weak_points)}。
-        
-        请根据“最近发展区”理论，生成个性化学习路径。
-        【重要】必须严格返回纯 JSON 格式，不要包含 Markdown 标记（如 ```json）。
-        返回格式如下：
-        {{
-            "logic_reasoning": "简短的诊断分析（50字以内）",
-            "recommended_steps": ["第一步行动", "第二步行动", "第三步行动", "第四步行动"]
-        }}
-        """
-
+    def _call_ai(self, system_prompt, user_prompt):
+        """通用 AI 调用方法"""
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json"
         }
-        
-        # 构造请求体
         payload = {
             "model": self.model,
             "messages": [
-                {
-                    "role": "system", 
-                    "content": "你是一个只输出 JSON 的教育专家助手。"
-                },
-                {
-                    "role": "user", 
-                    "content": prompt 
-                }
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
             ],
             "temperature": 0.7,
             "max_tokens": 4096 
         }
-
         try:
-            logger.info(f"正在调用豆包模型: {self.model} ...")
-            
-            # 发送请求
             response = requests.post(self.api_url, headers=headers, json=payload, timeout=60)
-            
             if response.status_code != 200:
-                logger.error(f"API 调用失败: {response.text}")
-                return self._get_fallback_data(f"API 报错: {response.status_code}")
-
-            result = response.json()
+                logger.error(f"API Error: {response.text}")
+                return None
             
-            if 'choices' not in result or not result['choices']:
-                return self._get_fallback_data("API 返回内容为空")
-
-            content = result['choices'][0]['message']['content']
-            logger.info(f"AI 返回原始内容: {content}")
-            
-            # 清洗数据
+            content = response.json()['choices'][0]['message']['content']
             clean_content = content.replace("```json", "").replace("```", "").strip()
-            
             try:
                 return json.loads(clean_content)
-            except json.JSONDecodeError:
-                return {
-                    "logic_reasoning": content[:100] + "...",
-                    "recommended_steps": ["AI 返回格式非标准，请查看诊断分析"]
-                }
-
+            except:
+                return clean_content
         except Exception as e:
-            logger.error(f"系统内部错误: {str(e)}")
-            return self._get_fallback_data(f"系统连接错误: {str(e)}")
+            logger.error(f"AI Call Failed: {e}")
+            return None
 
-    def _get_fallback_data(self, reason):
-        return {
-            "logic_reasoning": f"【系统提示】{reason}。显示离线建议。",
-            "recommended_steps": ["检查网络连接", "确认 Model ID 正确"]
+    def generate_learning_path(self, student_profile: dict, weak_points: list):
+        system_prompt = "你是一位资深教育专家。请根据学生情况和薄弱点，生成学习路径。必须返回纯 JSON，格式：{'logic_reasoning': '...', 'recommended_steps': ['...']}"
+        user_prompt = f"学生：{student_profile}。薄弱点：{weak_points}。"
+        res = self._call_ai(system_prompt, user_prompt)
+        return res if isinstance(res, dict) else {
+            "logic_reasoning": "AI 服务响应格式异常",
+            "recommended_steps": ["请检查网络或重试"]
         }
 
-# 【关键点】这里实例化了 ai_agent，这就是报错说找不到的东西
+    def generate_diagnostic_quiz(self, grade: int, subject: str = "数学"):
+        system_prompt = """
+        你是一名命题专家。请生成 5 道单选题，用于评估学生的知识水平。
+        必须返回纯 JSON 格式，结构如下：
+        [
+            {"id": 1, "content": "题目", "options": ["A", "B", "C", "D"], "correct_index": 0, "knowledge_point": "考点"}
+        ]
+        """
+        user_prompt = f"请为 {grade} 年级 {subject} 生成一套诊断测试题。"
+        res = self._call_ai(system_prompt, user_prompt)
+        return res if isinstance(res, list) else []
+
+    def analyze_weakness(self, wrong_records: list):
+        if not wrong_records: return []
+        system_prompt = "你是一名学习顾问。请根据错题总结 1-3 个薄弱知识点。必须返回纯 JSON 字符串列表，如 ['函数', '几何']"
+        user_prompt = f"错题记录：{json.dumps(wrong_records, ensure_ascii=False)}"
+        res = self._call_ai(system_prompt, user_prompt)
+        return res if isinstance(res, list) else ["综合基础"]
+
+    def generate_class_report(self, class_data: dict):
+        """
+        class_data 结构示例:
+        {
+            "total_students": 40,
+            "average_progress": 65,
+            "risk_count": 5,
+            "common_weak_nodes": ["三角函数", "导数"]
+        }
+        """
+        system_prompt = """
+        你是一位高级教学主管。请根据班级学情数据，生成一份简短的教学分析报告。
+        请包含以下三个部分：
+        1. 【整体学情】：分析班级整体掌握情况。
+        2. 【共性问题】：针对共性薄弱点进行分析。
+        3. 【教学建议】：给老师接下来的备课提供 3 条具体建议。
+        
+        请直接返回格式化的 Markdown 文本。
+        """
+        user_prompt = f"班级数据如下：{json.dumps(class_data, ensure_ascii=False)}"
+    
+        res = self._call_ai(system_prompt, user_prompt)
+        return res if isinstance(res, str) else "AI 分析服务暂时不可用。"
+
 ai_agent = DoubaoService()

@@ -3,7 +3,7 @@
     <el-card class="quiz-card" v-loading="loading">
       <template #header>
         <div class="header">
-          <span>📝 课程结业测验</span>
+          <span>课程结业测验</span>
           <el-tag v-if="!result">考试中</el-tag>
           <el-tag type="success" v-else-if="result.passed">已通过</el-tag>
           <el-tag type="danger" v-else>未通过</el-tag>
@@ -33,7 +33,7 @@
         <div class="score-circle" :class="{ pass: result.passed, fail: !result.passed }">
           {{ result.score }} <span style="font-size: 14px">分</span>
         </div>
-        <h2 style="margin: 20px 0;">{{ result.passed ? '🎉 恭喜！测验通过' : '💪 很遗憾，请继续加油' }}</h2>
+        <h2 style="margin: 20px 0;">{{ result.passed ? '恭喜！测验通过' : '很遗憾，请继续加油' }}</h2>
         <p class="feedback">{{ result.mastery_update }}</p>
 
         <div class="actions">
@@ -70,7 +70,6 @@ const fetchQuestions = async () => {
   try {
     const res = await axios.get(`http://localhost:8000/quiz/${courseId}`)
     questions.value = res.data
-    // 重置答案
     userAnswers.value = new Array(questions.value.length).fill(null)
     result.value = null
   } catch (error) {

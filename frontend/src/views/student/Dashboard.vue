@@ -4,8 +4,15 @@
       <el-button type="success" @click="$router.push('/student/graph')">
         <el-icon style="margin-right: 5px">
           <DataLine />
-        </el-icon> 查看知识图谱 (3D)
+        </el-icon> 查看知识图谱
       </el-button>
+      
+      <el-button type="warning" @click="$router.push('/student/diagnostic')">
+        <el-icon style="margin-right: 5px">
+          <FirstAidKit />
+        </el-icon> 智能诊断测试
+      </el-button>
+
       <el-button type="primary" plain @click="$router.push('/forum')">
         <el-icon style="margin-right: 5px">
           <ChatDotRound />
@@ -16,13 +23,18 @@
     <el-card class="box-card" shadow="hover">
       <template #header>
         <div class="card-header">
-          <span>🤖 AI 学习助手 (豆包驱动)</span>
+          <span> AI学习助手</span>
         </div>
       </template>
 
       <div style="display: flex; gap: 10px; margin-bottom: 20px;">
-        <el-input v-model="weakPoint" placeholder="请输入你的薄弱知识点（如：三角函数），AI 将为你规划路径" style="max-width: 500px;" clearable
-          @keyup.enter="getAIPath" />
+        <el-input 
+          v-model="weakPoint" 
+          placeholder="请输入你的薄弱知识点（如：三角函数），AI 将为你规划路径" 
+          style="max-width: 500px;" 
+          clearable
+          @keyup.enter="getAIPath" 
+        />
         <el-button type="primary" @click="getAIPath" :loading="aiLoading">
           <el-icon style="margin-right: 5px">
             <MagicStick />
@@ -31,11 +43,22 @@
       </div>
 
       <div v-if="aiResult" class="ai-result-area">
-        <el-alert title="AI 诊断分析" type="success" :description="aiResult.logic_reasoning" show-icon :closable="false"
-          style="margin-bottom: 20px;" />
+        <el-alert 
+          title="AI 诊断分析" 
+          type="success" 
+          :description="aiResult.logic_reasoning" 
+          show-icon 
+          :closable="false"
+          style="margin-bottom: 20px;" 
+        />
         <el-timeline>
-          <el-timeline-item v-for="(step, index) in aiResult.recommended_steps" :key="index" type="primary"
-            :hollow="true" :timestamp="'步骤 ' + (index + 1)">
+          <el-timeline-item 
+            v-for="(step, index) in aiResult.recommended_steps" 
+            :key="index" 
+            type="primary"
+            :hollow="true" 
+            :timestamp="'步骤 ' + (index + 1)"
+          >
             {{ step }}
           </el-timeline-item>
         </el-timeline>
@@ -43,7 +66,7 @@
     </el-card>
 
     <h3 style="margin-top: 30px; display: flex; align-items: center;">
-      📚 推荐课程
+      推荐课程
       <el-tag type="info" size="small" style="margin-left: 10px">实时更新</el-tag>
     </h3>
 
@@ -79,44 +102,45 @@
 import { ref, onMounted } from 'vue'
 import axios from 'axios'
 import { ElMessage } from 'element-plus'
-import { useRouter } from 'vue-router'
-// 显式导入所需图标，确保不报错
-import { DataLine, ChatDotRound, MagicStick, Loading } from '@element-plus/icons-vue'
+import { useRouter, useRoute } from 'vue-router'
+import { DataLine, ChatDotRound, MagicStick, Loading, FirstAidKit } from '@element-plus/icons-vue'
 
 const router = useRouter()
+const route = useRoute()
 
-// --- 数据状态 ---
 const weakPoint = ref('')
 const aiResult = ref(null)
 const aiLoading = ref(false)
 const courses = ref([])
 const loading = ref(false)
 
-// 1. 获取 AI 路径 (对应流程 3 & 4)
 const getAIPath = async () => {
   if (!weakPoint.value) return ElMessage.warning('请先输入薄弱知识点')
 
   aiLoading.value = true
   aiResult.value = null
+  
+  const currentUsername = localStorage.getItem('username') || "同学"
 
   try {
     const res = await axios.post('http://localhost:8000/ai-engine/learning-path', {
-      name: "当前学生",
+      name: currentUsername,
       grade: 10,
       weak_subjects: [weakPoint.value]
+    }, {
+      headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
     })
+    
     aiResult.value = res.data
     ElMessage.success('AI 路径规划完成！')
   } catch (error) {
-    // 优雅降级：如果 AI 服务挂了，给一个模拟提示，不让前端崩溃
     console.error(error)
-    ElMessage.error('AI 服务连接超时，请检查后端日志')
+    ElMessage.error(error.response?.data?.error || 'AI 服务连接异常')
   } finally {
     aiLoading.value = false
   }
 }
 
-// 2. 获取课程列表 (对应流程 2)
 const fetchCourses = async () => {
   loading.value = true
   try {
@@ -129,7 +153,6 @@ const fetchCourses = async () => {
   }
 }
 
-// 3. 跳转到学习教室
 const startLearning = (course) => {
   router.push({
     path: `/learn/${course.id}`,
@@ -139,6 +162,12 @@ const startLearning = (course) => {
 
 onMounted(() => {
   fetchCourses()
+  if (route.query.auto_weakness) {
+    weakPoint.value = route.query.auto_weakness
+    setTimeout(() => {
+      getAIPath()
+    }, 500)
+  }
 })
 </script>
 
@@ -154,6 +183,9 @@ onMounted(() => {
   text-align: right;
   border-bottom: 1px solid #eee;
   padding-bottom: 15px;
+  display: flex; 
+  justify-content: flex-end;
+  gap: 10px;
 }
 
 .course-card {

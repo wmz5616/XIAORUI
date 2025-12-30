@@ -3,13 +3,11 @@ from sqlalchemy.orm import relationship, sessionmaker, declarative_base
 from sqlalchemy import create_engine
 from datetime import datetime
 
-# 数据库连接
 SQLALCHEMY_DATABASE_URL = "sqlite:///./xiaorui_full_system.db"
 engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
-# 1. 用户与权限
 class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True, index=True)
@@ -19,11 +17,13 @@ class User(Base):
     full_name = Column(String)
     created_at = Column(DateTime, default=datetime.now)
     learn_time = Column(Integer, default=0)
-    
+    is_silenced = Column(Boolean, default=False)
+
     student_records = relationship("LearningRecord", back_populates="student")
     posts = relationship("ForumPost", back_populates="author")
+    notifications = relationship("Notification", back_populates="user")
+    answers = relationship("StudentAnswer", back_populates="student")
 
-# 2. 课程与资源
 class Course(Base):
     __tablename__ = "courses"
     id = Column(Integer, primary_key=True, index=True)
@@ -41,13 +41,11 @@ class CourseResource(Base):
     id = Column(Integer, primary_key=True, index=True)
     course_id = Column(Integer, ForeignKey("courses.id"))
     title = Column(String)
-    type = Column(String) 
+    type = Column(String)
     url = Column(String)
     
-    # ✅ 修复点：补全了这行关联代码
     course = relationship("Course", back_populates="resources")
 
-# 3. 知识图谱
 class KnowledgeNode(Base):
     __tablename__ = "knowledge_nodes"
     id = Column(Integer, primary_key=True, index=True)
@@ -65,31 +63,42 @@ class KnowledgeEdge(Base):
     target_id = Column(Integer, ForeignKey("knowledge_nodes.id"))
     relation_type = Column(String, default="prerequisite")
 
-# 4. 真实题库
 class Question(Base):
     __tablename__ = "questions"
     id = Column(Integer, primary_key=True, index=True)
     course_id = Column(Integer, ForeignKey("courses.id"))
     content = Column(Text)
-    options_json = Column(String) 
-    correct_answer = Column(Integer) 
+    type = Column(String, default="choice")
+    options_json = Column(String)
+    correct_answer = Column(String)
     
     course = relationship("Course", back_populates="questions")
+    student_answers = relationship("StudentAnswer", back_populates="question")
 
-# 5. 学情记录
+class StudentAnswer(Base):
+    __tablename__ = "student_answers"
+    id = Column(Integer, primary_key=True, index=True)
+    student_id = Column(Integer, ForeignKey("users.id"))
+    question_id = Column(Integer, ForeignKey("questions.id"))
+    answer_content = Column(Text)
+    score = Column(Integer, default=None)
+    teacher_comment = Column(Text)
+    submitted_at = Column(DateTime, default=datetime.now)
+
+    student = relationship("User", back_populates="answers")
+    question = relationship("Question", back_populates="student_answers")
+
 class LearningRecord(Base):
     __tablename__ = "learning_records"
     id = Column(Integer, primary_key=True, index=True)
     student_id = Column(Integer, ForeignKey("users.id"))
     knowledge_node_id = Column(Integer, ForeignKey("knowledge_nodes.id"))
-    
     mastery_level = Column(Float, default=0.0)
     last_practice_date = Column(DateTime, default=datetime.now)
     status = Column(String)
     
     student = relationship("User", back_populates="student_records")
 
-# 6. 社区
 class ForumPost(Base):
     __tablename__ = "forum_posts"
     id = Column(Integer, primary_key=True, index=True)
@@ -97,6 +106,7 @@ class ForumPost(Base):
     title = Column(String)
     content = Column(Text)
     type = Column(String, default="discussion")
+    is_pinned = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.now)
     
     author = relationship("User", back_populates="posts")
@@ -107,6 +117,16 @@ class SystemConfig(Base):
     key = Column(String, unique=True)
     value = Column(String)
     description = Column(String)
+
+class Notification(Base):
+    __tablename__ = "notifications"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    content = Column(String)
+    is_read = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.now)
+    
+    user = relationship("User", back_populates="notifications")
 
 def init_db():
     Base.metadata.create_all(bind=engine)

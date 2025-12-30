@@ -9,6 +9,7 @@ import Forum from '../views/student/Forum.vue'
 import StudyRoom from '../views/student/StudyRoom.vue'
 import Profile from '../views/student/Profile.vue'
 import Quiz from '../views/student/Quiz.vue'
+import DiagnosticTest from '../views/student/DiagnosticTest.vue'
 
 const routes = [
   { path: '/', component: Login },
@@ -20,6 +21,7 @@ const routes = [
   { path: '/learn/:id', component: StudyRoom },
   { path: '/student/profile', component: Profile },
   { path: '/quiz/:id', component: Quiz },
+  { path: '/student/diagnostic', component: DiagnosticTest },
 
   { path: '/teacher', component: TeacherDashboard },
 

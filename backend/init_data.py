@@ -8,12 +8,11 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from app.models import SessionLocal, init_db, User, Course, CourseResource, KnowledgeNode, KnowledgeEdge, LearningRecord, Question, ForumPost
 
 def init():
-    print("🚀 开始初始化全量真实数据...")
+    print("开始初始化全量真实数据...")
     init_db()
     db = SessionLocal()
     
-    # --- 1. 清空旧数据 ---
-    print("🧹 清空旧数据库...")
+    print("清空旧数据库...")
     db.query(LearningRecord).delete()
     db.query(KnowledgeEdge).delete()
     db.query(KnowledgeNode).delete()
@@ -24,7 +23,6 @@ def init():
     db.query(User).delete()
     db.commit()
 
-    # --- 2. 创建用户 ---
     print("👤 创建基础用户...")
     users = [
         User(username="admin", role="admin", full_name="系统管理员", hashed_password="fake_hash"),
@@ -37,7 +35,6 @@ def init():
     teacher_id = db.query(User).filter(User.role == "teacher").first().id
     student_id = db.query(User).filter(User.role == "student").first().id
 
-    # --- 3. 定义课程数据包 (6门课) ---
     courses_data = [
         {
             "title": "Python 编程基础",
@@ -121,9 +118,8 @@ def init():
         }
     ]
 
-    # --- 4. 循环创建课程及关联数据 ---
     for c_data in courses_data:
-        print(f"📚 创建课程: {c_data['title']}...")
+        print(f"创建课程: {c_data['title']}...")
         course = Course(
             title=c_data['title'],
             description=c_data['desc'],
@@ -131,9 +127,8 @@ def init():
             status="published"
         )
         db.add(course)
-        db.commit() # 提交以获取 ID
+        db.commit()
         
-        # 创建资源
         for res in c_data['resources']:
             db.add(CourseResource(
                 course_id=course.id, 
@@ -142,7 +137,6 @@ def init():
                 url=res['url']
             ))
             
-        # 创建题目
         for q in c_data['questions']:
             db.add(Question(
                 course_id=course.id,
@@ -151,7 +145,6 @@ def init():
                 correct_answer=q['ans']
             ))
             
-        # 创建图谱节点
         nodes = []
         for i, label in enumerate(c_data['nodes']):
             node = KnowledgeNode(
@@ -162,16 +155,14 @@ def init():
             nodes.append(node)
         db.add_all(nodes)
         db.commit()
-        
-        # 创建图谱连线 (简单链式连接: 1->2->3->4)
+
         for i in range(len(nodes) - 1):
             db.add(KnowledgeEdge(
                 source_id=nodes[i].id,
                 target_id=nodes[i+1].id,
                 relation_type="prerequisite"
             ))
-            
-        # 为第一门课(Python)添加一条已掌握的学习记录，用于演示
+
         if "Python" in c_data['title']:
             db.add(LearningRecord(
                 student_id=student_id,
@@ -179,9 +170,8 @@ def init():
                 mastery_level=1.0,
                 status="mastered"
             ))
-            
-    # --- 5. 添加一些社区帖子 ---
-    print("💬 创建社区讨论...")
+
+    print("创建社区讨论...")
     posts = [
         ForumPost(title="Python 列表推导式怎么用？", content="求大佬解释一下列表推导式的语法...", author_id=student_id),
         ForumPost(title="牛顿第三定律的适用范围", content="在非惯性系下还成立吗？", author_id=student_id),
@@ -191,9 +181,9 @@ def init():
     
     db.commit()
     db.close()
-    print("\n✅ 全量真实数据初始化完成！")
-    print("👉 学生账号: student / 123456")
-    print("👉 包含 6 门完整课程 (Python, 数学, 物理, 英语, 历史, 化学)")
+    print("\n量真实数据初始化完成！")
+    print("学生账号: student / 123456")
+    print("包含 6 门完整课程 (Python, 数学, 物理, 英语, 历史, 化学)")
 
 if __name__ == "__main__":
     init()

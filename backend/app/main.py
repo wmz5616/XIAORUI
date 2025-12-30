@@ -9,12 +9,10 @@ UPLOAD_DIR = "uploads"
 if not os.path.exists(UPLOAD_DIR):
     os.makedirs(UPLOAD_DIR)
 
-# 初始化数据库表
 init_db()
 
 app = FastAPI(title="XIAORUI智能教育平台")
 
-# 配置 CORS 允许前端访问
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],

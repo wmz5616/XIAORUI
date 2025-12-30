@@ -37,7 +37,7 @@
       </el-col>
 
       <el-col :span="6" class="sidebar">
-        <div class="sidebar-header">📚 课程目录</div>
+        <div class="sidebar-header">课程目录</div>
         <el-scrollbar class="resource-list-scroll">
           <div v-if="loading" style="padding: 20px; text-align: center; color: #999;">加载中...</div>
           <div v-else-if="resources.length === 0" style="padding: 20px; text-align: center; color: #999;">暂无资源</div>
@@ -63,7 +63,7 @@
 
         <div class="sidebar-footer">
           <el-button type="success" size="large" style="width: 100%" @click="$router.push(`/quiz/${courseId}`)">
-            📝 参加结业测验
+            参加结业测验
           </el-button>
         </div>
       </el-col>

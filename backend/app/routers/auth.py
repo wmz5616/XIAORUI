@@ -7,12 +7,10 @@ from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
-# 引入本地模型
 from ..models import SessionLocal, User
 
 router = APIRouter(tags=["Authentication"])
 
-# --- 配置 ---
 SECRET_KEY = "xiaorui_secret_key_demo"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
@@ -20,7 +18,6 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 60
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
-# --- Pydantic 模型 ---
 class UserRegister(BaseModel):
     username: str
     password: str
@@ -33,7 +30,6 @@ class Token(BaseModel):
     role: str
     user_id: int
 
-# --- 数据库依赖 ---
 def get_db():
     db = SessionLocal()
     try:
@@ -41,7 +37,6 @@ def get_db():
     finally:
         db.close()
 
-# --- 工具函数 ---
 def verify_password(plain_password, hashed_password):
     if hashed_password == "fake_hash": 
         return plain_password == "123456"
@@ -56,9 +51,6 @@ def create_access_token(data: dict):
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
-# =========================================================
-# 👇👇👇 补回了缺失的 get_current_user 函数 👇👇👇
-# =========================================================
 async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -75,11 +67,7 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = De
     user = db.query(User).filter(User.username == username).first()
     if user is None: raise credentials_exception
     return user
-# =========================================================
 
-# --- 接口逻辑 ---
-
-# 1. 注册接口
 @router.post("/register")
 def register_user(user: UserRegister, db: Session = Depends(get_db)):
     db_user = db.query(User).filter(User.username == user.username).first()
@@ -103,7 +91,6 @@ def register_user(user: UserRegister, db: Session = Depends(get_db)):
     
     return {"msg": "注册成功", "username": new_user.username}
 
-# 2. 登录接口
 @router.post("/token", response_model=Token)
 async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     user = db.query(User).filter(User.username == form_data.username).first()
