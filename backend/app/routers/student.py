@@ -1,12 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Optional
 from pydantic import BaseModel
+from datetime import datetime
 
-from ..models import SessionLocal, Course, CourseResource, KnowledgeNode, KnowledgeEdge, User, LearningRecord, Notification
+from ..models import SessionLocal, Course, User, LearningRecord, CourseResource, Notification, Question, StudentAnswer
 from .auth import get_current_user
 
-router = APIRouter(prefix="/student", tags=["Student Learning"])
+router = APIRouter(prefix="/student", tags=["Student End"])
 
 def get_db():
     db = SessionLocal()
@@ -15,101 +16,83 @@ def get_db():
     finally:
         db.close()
 
-class CourseModel(BaseModel):
-    id: int
-    title: str
-    description: str
-    teacher_name: str = "未知教师"
-    class Config: from_attributes = True
+class StudentUpdate(BaseModel):
+    full_name: Optional[str] = None
 
-class ResourceModel(BaseModel):
-    id: int; title: str; type: str; url: str
+@router.get("/homeworks")
+def get_student_homeworks(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """
+    获取学生作业列表：
+    列出所有有题目的课程，并显示完成进度。
+    """
+    courses_with_questions = db.query(Course).join(Question).distinct().all()
+    
+    homework_list = []
+    
+    for course in courses_with_questions:
+        total_questions = db.query(Question).filter(Question.course_id == course.id).count()
 
-class UserProfile(BaseModel):
-    username: str
-    full_name: str
-    role: str
-    learn_time: int      
-    finished_courses: int 
-    ability_radar: List[int]
+        answered_count = db.query(StudentAnswer).join(Question).filter(
+            StudentAnswer.student_id == current_user.id,
+            Question.course_id == course.id
+        ).count()
 
-class NotificationModel(BaseModel):
-    id: int
-    content: str
-    is_read: bool
-    time: str
+        status = "pending"
+        if answered_count > 0:
+            if answered_count >= total_questions:
+                status = "completed"
+            else:
+                status = "in_progress"
 
-@router.get("/courses", response_model=List[CourseModel])
+        teacher = db.query(User).filter(User.id == course.teacher_id).first()
+        teacher_name = teacher.full_name if teacher else "未知教师"
+
+        homework_list.append({
+            "course_id": course.id,
+            "course_title": course.title,
+            "teacher_name": teacher_name,
+            "total_questions": total_questions,
+            "answered_questions": answered_count,
+            "status": status
+        })
+        
+    return homework_list
+
+@router.get("/courses")
 def get_all_courses(db: Session = Depends(get_db)):
-    courses = db.query(Course).filter(Course.status == "published").all()
-    return courses
+    """获取所有已发布的课程"""
+    return db.query(Course).filter(Course.status == "published").all()
 
-@router.get("/course/{course_id}/resources", response_model=List[ResourceModel])
+@router.get("/course/{course_id}/resources")
 def get_course_resources(course_id: int, db: Session = Depends(get_db)):
-    course = db.query(Course).filter(Course.id == course_id).first()
-    if not course:
-        raise HTTPException(status_code=404, detail="课程不存在")
+    """获取课程资源"""
     return db.query(CourseResource).filter(CourseResource.course_id == course_id).all()
 
-@router.get("/knowledge-graph/{course_id}")
-def get_knowledge_graph(
-    course_id: int, 
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    nodes = db.query(KnowledgeNode).filter(KnowledgeNode.course_id == course_id).all()
-    if not nodes: return {"nodes": [], "links": [], "categories": []}
-        
-    node_ids = [n.id for n in nodes]
-    links = db.query(KnowledgeEdge).filter(
-        KnowledgeEdge.source_id.in_(node_ids),
-        KnowledgeEdge.target_id.in_(node_ids)
-    ).all()
-
-    records = db.query(LearningRecord).filter(LearningRecord.student_id == current_user.id).all()
-    mastered_map = {r.knowledge_node_id: (r.mastery_level >= 0.8) for r in records}
-
-    formatted_nodes = [{
-        "id": str(n.id),
-        "name": n.label,
-        "symbolSize": n.weight * 30 + 10, 
-        "category": 1 if mastered_map.get(n.id, False) else 0,
-        "draggable": True,
-        "value": n.weight
-    } for n in nodes]
-
-    formatted_links = [{"source": str(l.source_id), "target": str(l.target_id)} for l in links]
-
-    return {
-        "nodes": formatted_nodes,
-        "links": formatted_links,
-        "categories": [{"name": "未掌握", "color": "#F56C6C"}, {"name": "已掌握", "color": "#67C23A"}]
-    }
-
-@router.get("/profile", response_model=UserProfile)
-def get_student_profile(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    mastered_count = db.query(LearningRecord).filter(
-        LearningRecord.student_id == current_user.id,
-        LearningRecord.mastery_level >= 0.8
-    ).count()
-
-    base_score = 40
-    dynamic_score = min(100, base_score + (mastered_count * 15))
-    radar_data = [dynamic_score, min(100, dynamic_score + 10), min(100, dynamic_score - 5), min(100, dynamic_score + 5), dynamic_score]
+@router.get("/profile")
+def get_profile(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    learn_days = 12
+    notes_count = 5 
     
-    real_learn_time = getattr(current_user, 'learn_time', 0)
-
     return {
         "username": current_user.username,
-        "full_name": current_user.full_name or "未命名",
+        "full_name": current_user.full_name,
         "role": current_user.role,
-        "learn_time": real_learn_time, 
-        "finished_courses": int(mastered_count / 3),
-        "ability_radar": radar_data
+        "learn_time": current_user.learn_time,
+        "learn_days": learn_days,
+        "notes_count": notes_count,
+        "radar_data": [80, 60, 70, 90, 50, 75]
     }
 
-@router.get("/notifications", response_model=List[NotificationModel])
-def get_my_notifications(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+@router.put("/profile")
+def update_profile(info: StudentUpdate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.id == current_user.id).first()
+    if info.full_name:
+        user.full_name = info.full_name
+    db.commit()
+    return {"msg": "更新成功"}
+
+@router.get("/notifications")
+def get_notifications(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     notifs = db.query(Notification).filter(
         Notification.user_id == current_user.id
     ).order_by(Notification.created_at.desc()).all()
@@ -118,17 +101,17 @@ def get_my_notifications(current_user: User = Depends(get_current_user), db: Ses
         "id": n.id,
         "content": n.content,
         "is_read": n.is_read,
-        "time": n.created_at.strftime("%Y-%m-%d %H:%M")
+        "created_at": n.created_at.strftime("%m-%d %H:%M")
     } for n in notifs]
 
-@router.post("/notifications/{notif_id}/read")
+@router.put("/notifications/{notif_id}/read")
 def read_notification(notif_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    notif = db.query(Notification).filter(
+    n = db.query(Notification).filter(
         Notification.id == notif_id, 
         Notification.user_id == current_user.id
     ).first()
     
-    if notif:
-        notif.is_read = True
+    if n:
+        n.is_read = True
         db.commit()
     return {"msg": "已读"}

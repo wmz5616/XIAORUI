@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, Column, ForeignKey, Integer, String, Text, Float, DateTime, JSON
+from sqlalchemy import Boolean, Column, ForeignKey, Integer, String, Text, Float, DateTime
 from sqlalchemy.orm import relationship, sessionmaker, declarative_base
 from sqlalchemy import create_engine
 from datetime import datetime
@@ -23,6 +23,8 @@ class User(Base):
     posts = relationship("ForumPost", back_populates="author")
     notifications = relationship("Notification", back_populates="user")
     answers = relationship("StudentAnswer", back_populates="student")
+    post_likes = relationship("PostLike", back_populates="user")
+    replies = relationship("ForumReply", back_populates="author")
 
 class Course(Base):
     __tablename__ = "courses"
@@ -43,25 +45,7 @@ class CourseResource(Base):
     title = Column(String)
     type = Column(String)
     url = Column(String)
-    
     course = relationship("Course", back_populates="resources")
-
-class KnowledgeNode(Base):
-    __tablename__ = "knowledge_nodes"
-    id = Column(Integer, primary_key=True, index=True)
-    course_id = Column(Integer, ForeignKey("courses.id"))
-    label = Column(String)
-    description = Column(Text)
-    weight = Column(Float, default=1.0)
-    
-    course = relationship("Course", back_populates="nodes")
-
-class KnowledgeEdge(Base):
-    __tablename__ = "knowledge_edges"
-    id = Column(Integer, primary_key=True, index=True)
-    source_id = Column(Integer, ForeignKey("knowledge_nodes.id"))
-    target_id = Column(Integer, ForeignKey("knowledge_nodes.id"))
-    relation_type = Column(String, default="prerequisite")
 
 class Question(Base):
     __tablename__ = "questions"
@@ -69,7 +53,7 @@ class Question(Base):
     course_id = Column(Integer, ForeignKey("courses.id"))
     content = Column(Text)
     type = Column(String, default="choice")
-    options_json = Column(String)
+    options_json = Column(String) 
     correct_answer = Column(String)
     
     course = relationship("Course", back_populates="questions")
@@ -88,6 +72,22 @@ class StudentAnswer(Base):
     student = relationship("User", back_populates="answers")
     question = relationship("Question", back_populates="student_answers")
 
+class KnowledgeNode(Base):
+    __tablename__ = "knowledge_nodes"
+    id = Column(Integer, primary_key=True, index=True)
+    course_id = Column(Integer, ForeignKey("courses.id"))
+    label = Column(String)
+    description = Column(Text)
+    weight = Column(Float, default=1.0)
+    course = relationship("Course", back_populates="nodes")
+
+class KnowledgeEdge(Base):
+    __tablename__ = "knowledge_edges"
+    id = Column(Integer, primary_key=True, index=True)
+    source_id = Column(Integer, ForeignKey("knowledge_nodes.id"))
+    target_id = Column(Integer, ForeignKey("knowledge_nodes.id"))
+    relation_type = Column(String, default="prerequisite")
+
 class LearningRecord(Base):
     __tablename__ = "learning_records"
     id = Column(Integer, primary_key=True, index=True)
@@ -96,7 +96,6 @@ class LearningRecord(Base):
     mastery_level = Column(Float, default=0.0)
     last_practice_date = Column(DateTime, default=datetime.now)
     status = Column(String)
-    
     student = relationship("User", back_populates="student_records")
 
 class ForumPost(Base):
@@ -110,6 +109,28 @@ class ForumPost(Base):
     created_at = Column(DateTime, default=datetime.now)
     
     author = relationship("User", back_populates="posts")
+    likes = relationship("PostLike", back_populates="post", cascade="all, delete-orphan")
+    replies = relationship("ForumReply", back_populates="post", cascade="all, delete-orphan")
+
+class ForumReply(Base):
+    __tablename__ = "forum_replies"
+    id = Column(Integer, primary_key=True, index=True)
+    post_id = Column(Integer, ForeignKey("forum_posts.id"))
+    author_id = Column(Integer, ForeignKey("users.id"))
+    content = Column(Text)
+    created_at = Column(DateTime, default=datetime.now)
+    
+    post = relationship("ForumPost", back_populates="replies")
+    author = relationship("User", back_populates="replies")
+
+class PostLike(Base):
+    __tablename__ = "post_likes"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    post_id = Column(Integer, ForeignKey("forum_posts.id"))
+    
+    user = relationship("User", back_populates="post_likes")
+    post = relationship("ForumPost", back_populates="likes")
 
 class SystemConfig(Base):
     __tablename__ = "system_configs"
@@ -125,7 +146,6 @@ class Notification(Base):
     content = Column(String)
     is_read = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.now)
-    
     user = relationship("User", back_populates="notifications")
 
 def init_db():

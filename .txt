@@ -3,21 +3,36 @@
 2、ctrl+~（终端输入）
 cd backend
 
-3、终端运行
+3、python init_data.py
+
+4、终端运行
 uvicorn app.main:app --reload
 
-4、再开一个终端
+5、再开一个终端
 cd frontend
 
-5、终端运行
+6、npm install jwt-decode
+
+7、终端运行
 npm run dev
 
 
 
 
+python main.py
+pip install -r requirements.txt
+pip install python-multipart
+python init_data.py
 
+cd frontend
+npm install
+npm run dev
 
+漏了知识图谱
+我的课程没有完善
 
-
-
-
+1、学生的作业模块异常：老师布置的作业怎么可以和原先的题目混在一起呢？
+2、学生若是3道题目全答对，只能得30分并且显示未通过，这个逻辑不正确；
+3、老师端发布的作业可以自定义作业名字，并且学生完成之后，老师可以批改审核作业；
+4、学生的薄弱点同步异常，老师端那边显示【未知知识点(0)】。
+5、学生端主页下面的最新消息是摆设吗？ 我希望你可以完全修复漏洞，一个文件一个文件的发，等待我确认才能进行下一个

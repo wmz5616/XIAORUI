@@ -1,267 +1,288 @@
 <template>
-  <div class="dashboard-container">
-    <div class="top-actions">
-      <el-button type="success" @click="$router.push('/student/graph')" class="action-btn">
-        <el-icon style="margin-right: 5px">
-          <DataLine />
-        </el-icon>知识图谱
-      </el-button>
-
-      <el-button type="warning" @click="$router.push('/student/diagnostic')" class="action-btn">
-        <el-icon style="margin-right: 5px">
-          <FirstAidKit />
-        </el-icon>智能诊断
-      </el-button>
-
-      <el-button type="primary" plain @click="$router.push('/forum')" class="action-btn">
-        <el-icon style="margin-right: 5px">
-          <ChatDotRound />
-        </el-icon>讨论区
-      </el-button>
-    </div>
-
-    <el-card class="box-card" shadow="hover">
-      <template #header>
-        <div class="card-header">
-          <span>AI学习助手</span>
+  <div class="student-dashboard">
+    <div class="welcome-header">
+      <div class="text-content">
+        <h1>欢迎回来，{{ user.full_name || user.username }}</h1>
+        <p>今天也是充满进步的一天，准备好开始学习了吗？</p>
+      </div>
+      <div class="stats-overview">
+        <div class="stat-item">
+          <span class="num">{{ user.learn_time || 0 }}</span>
+          <span class="label">学习时长(分)</span>
         </div>
-      </template>
-
-      <div class="ai-input-area">
-        <el-input v-model="weakPoint" placeholder="请输入你的薄弱知识点" class="ai-input" clearable @keyup.enter="getAIPath" />
-        <el-button type="primary" @click="getAIPath" :loading="aiLoading" class="ai-btn">
-          <el-icon style="margin-right: 5px">
-            <MagicStick />
-          </el-icon> 生成路径
-        </el-button>
+        <div class="stat-item">
+          <span class="num">{{ user.learn_days || 1 }}</span>
+          <span class="label">坚持天数</span>
+        </div>
       </div>
-
-      <div v-if="aiResult" class="ai-result-area">
-        <el-alert title="AI诊断分析" type="success" :description="aiResult.logic_reasoning" show-icon :closable="false"
-          style="margin-bottom: 20px;" />
-        <el-timeline>
-          <el-timeline-item v-for="(step, index) in aiResult.recommended_steps" :key="index" type="primary"
-            :hollow="true" :timestamp="'步骤 ' + (index + 1)">
-            {{ step }}
-          </el-timeline-item>
-        </el-timeline>
-      </div>
-    </el-card>
-
-    <h3
-      style="margin-top: 30px; display: flex; align-items: center; padding-left: 5px; border-left: 4px solid #409EFF;">
-      <span style="margin-left: 10px;">推荐课程</span>
-      <el-tag type="info" size="small" style="margin-left: 10px">实时更新</el-tag>
-    </h3>
-
-    <div v-if="loading" style="text-align: center; padding: 40px; color: #909399;">
-      <el-icon class="is-loading" style="font-size: 24px; vertical-align: middle; margin-right: 8px;">
-        <Loading />
-      </el-icon>
-      <span>加载课程库中...</span>
     </div>
 
-    <el-row :gutter="20" v-else>
-      <el-col :xs="24" :sm="12" :md="8" v-for="course in courses" :key="course.id">
-        <el-card shadow="hover" class="course-card" @click="startLearning(course)">
-          <div class="card-content">
-            <div class="cover-placeholder" :style="{ backgroundColor: getRandomColor(course.id) }">
-              {{ course.title[0] }}
-            </div>
-            <div class="info">
-              <span class="course-title">{{ course.title }}</span>
-              <p class="desc">{{ course.description || '暂无介绍' }}</p>
-              <div class="card-bottom">
-                <el-tag size="small" type="info" effect="plain">讲师: {{ course.teacher_name || 'Teacher' }}</el-tag>
-                <el-button type="primary" link size="small">去学习 ></el-button>
-              </div>
-            </div>
-          </div>
-        </el-card>
-      </el-col>
+    <h3 class="section-title">学习中心</h3>
+    <div class="feature-grid">
+      <div class="feature-card course-card" @click="goToCourses">
+        <div class="icon-wrapper">
+          <el-icon :size="32">
+            <Reading />
+          </el-icon>
+        </div>
+        <div class="card-info">
+          <h3>我的课程</h3>
+          <p>进入学习室，观看视频与文档</p>
+        </div>
+      </div>
 
-      <el-col :span="24" v-if="courses.length === 0">
-        <el-empty description="老师暂时还没有发布课程哦~" />
-      </el-col>
-    </el-row>
+      <div class="feature-card homework-card" @click="$router.push('/student/homework-list')">
+        <div class="icon-wrapper">
+          <el-icon :size="32">
+            <EditPen />
+          </el-icon>
+        </div>
+        <div class="card-info">
+          <h3>我的作业</h3>
+          <p>查看待办作业与批改结果</p>
+        </div>
+      </div>
+
+      <div class="feature-card forum-card" @click="$router.push('/student/forum')">
+        <div class="icon-wrapper">
+          <el-icon :size="32">
+            <ChatLineRound />
+          </el-icon>
+        </div>
+        <div class="card-info">
+          <h3>讨论区</h3>
+          <p>与同学老师交流，解决难题</p>
+        </div>
+      </div>
+
+      <div class="feature-card ai-card" @click="$router.push('/student/ai-diagnosis')">
+        <div class="icon-wrapper">
+          <el-icon :size="32">
+            <DataAnalysis />
+          </el-icon>
+        </div>
+        <div class="card-info">
+          <h3>AI 智能诊断</h3>
+          <p>分析薄弱点，生成个性化建议</p>
+        </div>
+      </div>
+
+      <div class="feature-card profile-card" @click="$router.push('/student/profile')">
+        <div class="icon-wrapper">
+          <el-icon :size="32">
+            <User />
+          </el-icon>
+        </div>
+        <div class="card-info">
+          <h3>个人中心</h3>
+          <p>查看学习数据与能力雷达</p>
+        </div>
+      </div>
+    </div>
+
+    <h3 class="section-title" style="margin-top: 40px;">最新消息</h3>
+    <div v-if="notifications.length > 0" class="notification-list">
+      <div v-for="n in notifications.slice(0, 3)" :key="n.id" class="notif-item" :class="{ unread: !n.is_read }">
+        <el-tag size="small" :type="n.is_read ? 'info' : 'danger'" style="margin-right: 10px;">
+          {{ n.is_read ? '已读' : '新消息' }}
+        </el-tag>
+        <span class="notif-content">{{ n.content }}</span>
+        <span class="notif-time">{{ n.created_at }}</span>
+      </div>
+    </div>
+    <el-empty v-else description="暂无新消息" :image-size="60" />
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import axios from 'axios'
-import { ElMessage } from 'element-plus'
-import { useRouter, useRoute } from 'vue-router'
-import { DataLine, ChatDotRound, MagicStick, Loading, FirstAidKit } from '@element-plus/icons-vue'
+import { Reading, ChatLineRound, User, EditPen, DataAnalysis } from '@element-plus/icons-vue'
 
 const router = useRouter()
-const route = useRoute()
-const weakPoint = ref('')
-const aiResult = ref(null)
-const aiLoading = ref(false)
-const courses = ref([])
-const loading = ref(false)
-const colors = ['#409EFF', '#67C23A', '#E6A23C', '#F56C6C', '#909399', '#9C27B0']
-const getRandomColor = (id) => colors[id % colors.length]
+const user = ref({})
+const notifications = ref([])
 
-const getAIPath = async () => {
-  if (!weakPoint.value) return ElMessage.warning('请先输入薄弱知识点')
-
-  aiLoading.value = true
-  aiResult.value = null
-  const currentUsername = localStorage.getItem('username') || "同学"
-
+const fetchData = async () => {
   try {
-    const res = await axios.post('http://localhost:8000/ai-engine/learning-path', {
-      name: currentUsername, grade: 10, weak_subjects: [weakPoint.value]
-    }, { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } })
+    const token = localStorage.getItem('token')
+    const headers = { Authorization: `Bearer ${token}` }
 
-    aiResult.value = res.data
-    ElMessage.success('AI路径规划完成！')
+    const resUser = await axios.get('http://localhost:8000/student/profile', { headers })
+    user.value = resUser.data
+
+    const resNotif = await axios.get('http://localhost:8000/student/notifications', { headers })
+    notifications.value = resNotif.data
   } catch (error) {
-    ElMessage.error(error.response?.data?.error || 'AI服务连接异常')
-  } finally { aiLoading.value = false }
-}
-
-const fetchCourses = async () => {
-  loading.value = true
-  try {
-    const res = await axios.get('http://localhost:8000/student/courses')
-    courses.value = res.data
-  } catch (error) { console.error("获取课程失败:", error) } finally { loading.value = false }
-}
-
-const startLearning = (course) => {
-  router.push({ path: `/learn/${course.id}`, query: { title: course.title } })
-}
-
-onMounted(() => {
-  fetchCourses()
-  if (route.query.auto_weakness) {
-    weakPoint.value = route.query.auto_weakness
-    setTimeout(() => { getAIPath() }, 500)
+    console.error("Dashboard data error", error)
   }
-})
+}
+
+const goToCourses = () => {
+  router.push('/student/courses')
+}
+
+onMounted(fetchData)
 </script>
 
 <style scoped>
-.dashboard-container {
-  padding: 20px;
-  max-width: 1200px;
+.student-dashboard {
+  max-width: 1100px;
   margin: 0 auto;
+  padding: 20px;
 }
 
-.top-actions {
-  margin-bottom: 20px;
-  padding-bottom: 15px;
-  border-bottom: 1px solid #eee;
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.ai-input-area {
-  display: flex;
-  gap: 10px;
-  margin-bottom: 20px;
-}
-
-.ai-input {
-  max-width: 500px;
-  flex: 1;
-}
-
-.course-card {
-  cursor: pointer;
-  transition: transform 0.2s;
-  margin-bottom: 20px;
-}
-
-.course-card:hover {
-  transform: translateY(-5px);
-}
-
-.card-content {
-  display: flex;
-  align-items: center;
-}
-
-.cover-placeholder {
-  width: 60px;
-  height: 60px;
-  border-radius: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 24px;
-  font-weight: bold;
+.welcome-header {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
-  margin-right: 15px;
-  flex-shrink: 0;
-}
-
-.info {
-  flex: 1;
-  overflow: hidden;
-}
-
-.course-title {
-  font-weight: bold;
-  font-size: 16px;
-  display: block;
-  margin-bottom: 5px;
-  color: #303133;
-}
-
-.desc {
-  font-size: 13px;
-  color: #909399;
-  margin: 0 0 8px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.card-bottom {
+  padding: 30px 40px;
+  border-radius: 12px;
   display: flex;
   justify-content: space-between;
   align-items: center;
+  margin-bottom: 30px;
+  box-shadow: 0 4px 15px rgba(118, 75, 162, 0.3);
 }
 
-@media (max-width: 768px) {
-  .dashboard-container {
-    padding: 15px;
-  }
+.welcome-header h1 {
+  margin: 0 0 10px 0;
+  font-size: 24px;
+}
 
-  .top-actions {
-    justify-content: space-between;
-  }
+.welcome-header p {
+  margin: 0;
+  opacity: 0.9;
+}
 
-  .action-btn {
-    flex: 1;
-    min-width: 30%;
-    margin-left: 0 !important;
-    padding: 8px 5px;
-    font-size: 13px;
-  }
+.stats-overview {
+  display: flex;
+  gap: 40px;
+}
 
-  .ai-input-area {
-    flex-direction: column;
-  }
+.stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
 
-  .ai-input {
-    max-width: 100%;
-  }
+.stat-item .num {
+  font-size: 28px;
+  font-weight: bold;
+}
 
-  .ai-btn {
-    width: 100%;
-  }
+.stat-item .label {
+  font-size: 12px;
+  opacity: 0.8;
+  margin-top: 4px;
+}
 
-  .cover-placeholder {
-    width: 50px;
-    height: 50px;
-    font-size: 20px;
-  }
+.section-title {
+  font-size: 18px;
+  color: #333;
+  margin-bottom: 20px;
+  border-left: 4px solid #764ba2;
+  padding-left: 10px;
+}
+
+.feature-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 20px;
+}
+
+.feature-card {
+  background: white;
+  border-radius: 12px;
+  padding: 20px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  transition: all 0.3s;
+  border: 1px solid #eee;
+}
+
+.feature-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.05);
+}
+
+.icon-wrapper {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 15px;
+  color: white;
+  flex-shrink: 0;
+}
+
+.course-card .icon-wrapper {
+  background: linear-gradient(135deg, #84fab0 0%, #8fd3f4 100%);
+}
+
+.homework-card .icon-wrapper {
+  background: linear-gradient(135deg, #a18cd1 0%, #fbc2eb 100%);
+}
+
+.forum-card .icon-wrapper {
+  background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 99%, #fecfef 100%);
+}
+
+.ai-card .icon-wrapper {
+  background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+}
+
+.profile-card .icon-wrapper {
+  background: linear-gradient(135deg, #fbc2eb 0%, #a6c1ee 100%);
+}
+
+.card-info h3 {
+  margin: 0 0 5px 0;
+  font-size: 16px;
+  color: #333;
+}
+
+.card-info p {
+  margin: 0;
+  font-size: 12px;
+  color: #999;
+}
+
+.notification-list {
+  background: white;
+  border-radius: 8px;
+  padding: 10px;
+  border: 1px solid #eee;
+}
+
+.notif-item {
+  padding: 12px;
+  border-bottom: 1px solid #f5f5f5;
+  display: flex;
+  align-items: center;
+  font-size: 14px;
+}
+
+.notif-item:last-child {
+  border-bottom: none;
+}
+
+.notif-content {
+  flex: 1;
+  color: #555;
+}
+
+.notif-time {
+  color: #aaa;
+  font-size: 12px;
+  margin-left: 10px;
+}
+
+.unread .notif-content {
+  font-weight: bold;
+  color: #333;
 }
 </style>

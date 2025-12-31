@@ -4,7 +4,7 @@
       <el-button link @click="$router.push('/student')" style="color: #fff">
         <el-icon style="margin-right: 5px">
           <ArrowLeft />
-        </el-icon> 退出
+        </el-icon> 退出学习
       </el-button>
       <span class="course-title">{{ courseTitle }}</span>
       <div style="flex: 1"></div>
@@ -31,7 +31,7 @@
           </div>
 
           <div v-else class="empty-state">
-            <el-empty description="请选择课程" :image-size="100" />
+            <el-empty description="暂无资源或请选择资源" :image-size="100" />
           </div>
         </div>
       </el-col>
@@ -56,12 +56,7 @@
               </el-icon>
             </li>
           </ul>
-        </div>
-
-        <div class="sidebar-footer">
-          <el-button type="success" size="large" style="width: 100%" @click="$router.push(`/quiz/${courseId}`)">
-            参加结业测验
-          </el-button>
+          <el-empty v-if="resources.length === 0" description="老师暂未上传资源" :image-size="60" />
         </div>
       </el-col>
     </el-row>
@@ -70,13 +65,12 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute } from 'vue-router'
 import axios from 'axios'
 import { ArrowLeft, VideoPlay, Document } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 
 const route = useRoute()
-const router = useRouter()
 const courseId = route.params.id
 const courseTitle = route.query.title || '课程学习'
 
@@ -87,12 +81,21 @@ const fetchResources = async () => {
   try {
     const res = await axios.get(`http://localhost:8000/student/course/${courseId}/resources`)
     resources.value = res.data
-    if (resources.value.length > 0) currentResource.value = resources.value[0]
-  } catch (error) { ElMessage.error("资源加载失败") }
+    if (resources.value.length > 0) {
+      currentResource.value = resources.value[0]
+    }
+  } catch (error) {
+    ElMessage.error("资源加载失败")
+  }
 }
 
-const playResource = (res) => currentResource.value = res
-onMounted(fetchResources)
+const playResource = (res) => {
+  currentResource.value = res
+}
+
+onMounted(() => {
+  fetchResources()
+})
 </script>
 
 <style scoped>
@@ -112,6 +115,7 @@ onMounted(fetchResources)
   align-items: center;
   padding: 0 10px;
   flex-shrink: 0;
+  border-bottom: 1px solid #000;
 }
 
 .course-title {
@@ -161,15 +165,17 @@ onMounted(fetchResources)
   width: 100%;
   max-height: 100%;
   outline: none;
+  background: #000;
 }
 
 .doc-viewer {
   background: #fff;
   color: #333;
-  padding: 20px;
+  padding: 40px;
   border-radius: 8px;
   text-align: center;
-  width: 90%;
+  width: 80%;
+  max-width: 500px;
 }
 
 .sidebar-col {
@@ -181,7 +187,7 @@ onMounted(fetchResources)
 }
 
 .sidebar-header {
-  padding: 10px 15px;
+  padding: 15px;
   font-weight: bold;
   border-bottom: 1px solid #333;
   background: #333;
@@ -204,6 +210,11 @@ onMounted(fetchResources)
   cursor: pointer;
   display: flex;
   align-items: center;
+  transition: background 0.2s;
+}
+
+.resource-list li:hover {
+  background: #333;
 }
 
 .resource-list li.active {
@@ -236,11 +247,6 @@ onMounted(fetchResources)
   text-overflow: ellipsis;
 }
 
-.sidebar-footer {
-  padding: 10px;
-  border-top: 1px solid #333;
-}
-
 @media (max-width: 768px) {
   .study-room {
     height: auto;
@@ -257,13 +263,13 @@ onMounted(fetchResources)
   }
 
   .player-col {
-    height: 35vh;
+    height: 40vh;
     padding: 0;
     order: 1;
   }
 
   .sidebar-col {
-    height: 65vh;
+    height: 60vh;
     border-left: none;
     border-top: 1px solid #333;
     order: 2;

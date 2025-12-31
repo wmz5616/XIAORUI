@@ -38,9 +38,10 @@ def get_db():
         db.close()
 
 def verify_password(plain_password, hashed_password):
-    if hashed_password == "fake_hash": 
-        return plain_password == "123456"
-    return pwd_context.verify(plain_password, hashed_password)
+    try:
+        return pwd_context.verify(plain_password, hashed_password)
+    except Exception:
+        return False
 
 def get_password_hash(password):
     return pwd_context.hash(password)

@@ -1,14 +1,12 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Body
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List
 import shutil, os, json
 from datetime import datetime
-from collections import Counter
 
-from ..models import SessionLocal, KnowledgeNode, KnowledgeEdge, LearningRecord, User, Course, CourseResource, Notification, Question, StudentAnswer, ForumPost
+from ..models import SessionLocal, User, Course, CourseResource, Notification, Question, StudentAnswer, LearningRecord, KnowledgeNode, KnowledgeEdge
 from .auth import get_current_user
-from ..services.doubao_ai import ai_agent
 
 router = APIRouter(prefix="/teacher", tags=["Teacher End"])
 
@@ -20,34 +18,46 @@ def get_db():
         db.close()
 
 class CourseCreate(BaseModel):
-    title: str; description: str
-class NodeCreate(BaseModel):
-    course_id: int; label: str; weight: float = 1.0
-class EdgeCreate(BaseModel):
-    source_id: int; target_id: int; relation: str = "前置"
-class RemindRequest(BaseModel):
-    student_id: int; message: str
+    title: str
+    description: str
+
 class QuestionCreate(BaseModel):
     course_id: int
     content: str
-    type: str
+    type: str 
     options: List[str] = []
     correct_answer: str
+
 class GradeRequest(BaseModel):
     submission_id: int
     score: int
     comment: str
 
+class RemindRequest(BaseModel):
+    student_id: int
+    message: str
+
+class NodeCreate(BaseModel):
+    course_id: int; label: str; weight: float = 1.0
+
+class EdgeCreate(BaseModel):
+    source_id: int; target_id: int; relation: str = "前置"
+
+@router.get("/my-courses")
+def get_teacher_courses(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """获取该老师发布的所有课程（用于下拉菜单）"""
+    return db.query(Course).filter(Course.status == "published").all()
+
 @router.get("/class-monitor")
 def get_class_monitor(db: Session = Depends(get_db)):
     """
-    获取班级监控数据，包含具体的薄弱点名称
+    获取班级学情监控数据 - 已修复薄弱点显示问题
     """
     records = db.query(LearningRecord).all()
     students = db.query(User).filter(User.role == 'student').all()
-    
     student_map = {
         s.id: {
+            "id": s.id,
             "name": s.full_name or s.username, 
             "progress": 0, 
             "weak_points": set(), 
@@ -60,131 +70,107 @@ def get_class_monitor(db: Session = Depends(get_db)):
         if r.student_id in student_map:
             if r.mastery_level >= 0.8: 
                 student_map[r.student_id]["progress"] += 5
-            
-            elif r.mastery_level < 0.6: 
-                raw_status = r.status or "未知知识点"
-                point_name = raw_status
-                
-                if "诊断发现: " in raw_status:
-                    point_name = raw_status.replace("诊断发现: ", "")
-                elif "AI规划: " in raw_status:
-                    point_name = raw_status.replace("AI规划: ", "")
-                
+
+            elif r.mastery_level < 0.6:
+                node = db.query(KnowledgeNode).filter(KnowledgeNode.id == r.knowledge_node_id).first()
+                point_name = node.label if node else f"未知知识点({r.knowledge_node_id})"
+
                 if len(point_name) > 8: 
                     point_name = point_name[:8] + ".."
                 
                 student_map[r.student_id]["weak_points"].add(point_name)
 
-    result = []
-    for sid, data in student_map.items():
-        prog = min(100, data["progress"])
-        weak_list = list(data["weak_points"])
-
-        status = "Risk" if len(weak_list) > 2 else "Normal"
-        
-        result.append({
-            "id": sid, 
-            "name": data["name"],
-            "weak_points_list": weak_list,
-            "progress": prog, 
-            "status": status, 
-            "is_silenced": data["is_silenced"]
-        })
-    return result
+    return [{
+        "id": v["id"],
+        "name": v["name"],
+        "progress": min(100, v["progress"]),
+        "status": "Risk" if len(v["weak_points"]) > 2 else "Normal",
+        "weak_points_list": list(v["weak_points"]),
+        "is_silenced": v["is_silenced"]
+    } for v in student_map.values()]
 
 @router.post("/generate-report")
 def generate_class_report(db: Session = Depends(get_db)):
-    students = db.query(User).filter(User.role == 'student').count()
-    return {"report": f"AI教学分析报告<br>本班共有学生 {students} 人。整体学情稳定，建议关注部分薄弱点较多的同学..."} 
-
-@router.post("/remind-student")
-def remind_student(req: RemindRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    new_notif = Notification(user_id=req.student_id, content=f"【老师提醒】{req.message}", is_read=False)
-    db.add(new_notif); db.commit()
-    return {"msg": "发送成功"}
+    count = db.query(User).filter(User.role == 'student').count()
+    return {"report": f"<h3>AI 教学分析报告</h3><p>本班共有学生 {count} 人。整体学情稳定，建议关注部分薄弱点较多的同学。</p>"}
 
 @router.post("/courses")
 def create_course(course: CourseCreate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     new_course = Course(title=course.title, description=course.description, teacher_id=current_user.id, status="published")
-    db.add(new_course); db.commit(); db.refresh(new_course)
-    return {"msg": "创建成功", "id": new_course.id}
-
-@router.get("/my-courses")
-def get_teacher_courses(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    return db.query(Course).all()
+    db.add(new_course)
+    db.commit()
+    return {"msg": "课程创建成功", "id": new_course.id}
 
 @router.post("/upload-resource")
 async def upload_resource(course_id: int = Form(...), title: str = Form(...), file: UploadFile = File(...), db: Session = Depends(get_db)):
     os.makedirs("uploads", exist_ok=True)
-    file_name = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{file.filename}"
-    file_path = f"uploads/{file_name}"
-    with open(file_path, "wb") as buffer: shutil.copyfileobj(file.file, buffer)
-    new_res = CourseResource(course_id=course_id, title=title, type="video" if "mp4" in file.filename else "document", url=f"http://localhost:8000/{file_path}")
-    db.add(new_res); db.commit()
+    file_path = f"uploads/{datetime.now().strftime('%Y%m%d%H%M%S')}_{file.filename}"
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+    
+    res_type = "video" if file.filename.endswith(('.mp4', '.avi')) else "document"
+    new_res = CourseResource(course_id=course_id, title=title, type=res_type, url=f"http://localhost:8000/{file_path}")
+    db.add(new_res)
+    db.commit()
     return {"msg": "上传成功"}
 
 @router.post("/questions")
 def create_question(q: QuestionCreate, db: Session = Depends(get_db)):
+    """
+    录入题目：关联 CourseID，确保学生能看到
+    """
+    course = db.query(Course).filter(Course.id == q.course_id).first()
+    if not course:
+        raise HTTPException(status_code=404, detail="课程不存在")
+
     options_str = json.dumps(q.options, ensure_ascii=False) if q.type == 'choice' else ""
+    
     new_q = Question(
-        course_id=q.course_id, content=q.content, type=q.type,
-        options_json=options_str, correct_answer=q.correct_answer
+        course_id=q.course_id, 
+        content=q.content, 
+        type=q.type,
+        options_json=options_str, 
+        correct_answer=q.correct_answer
     )
-    db.add(new_q); db.commit()
-    return {"msg": "题目录入成功"}
+    db.add(new_q)
+    db.commit()
+    return {"msg": "题目已添加到题库"}
 
 @router.get("/submissions/pending")
 def get_pending_submissions(db: Session = Depends(get_db)):
-    subs = db.query(StudentAnswer).join(Question).filter(
-        StudentAnswer.score == None, 
-        Question.type == 'text'
-    ).all()
-    
+    """获取待批改（score 为 None）的作业"""
+    subs = db.query(StudentAnswer).filter(StudentAnswer.score == None).all()
     result = []
     for s in subs:
-        result.append({
-            "id": s.id,
-            "student_name": s.student.full_name or s.student.username,
-            "question_content": s.question.content,
-            "answer_content": s.answer_content,
-            "submitted_at": s.submitted_at.strftime("%Y-%m-%d %H:%M")
-        })
+        if s.question and s.student:
+            result.append({
+                "id": s.id,
+                "student_name": s.student.full_name,
+                "question_content": s.question.content,
+                "answer_content": s.answer_content,
+                "submitted_at": s.submitted_at.strftime("%Y-%m-%d %H:%M")
+            })
     return result
 
 @router.post("/submissions/grade")
 def grade_submission(req: GradeRequest, db: Session = Depends(get_db)):
     sub = db.query(StudentAnswer).filter(StudentAnswer.id == req.submission_id).first()
-    if not sub: raise HTTPException(404, "作业不存在")
+    if not sub: raise HTTPException(404, "作业记录不存在")
     
     sub.score = req.score
     sub.teacher_comment = req.comment
+
+    preview = sub.question.content[:10] + "..." if sub.question else "作业"
+    db.add(Notification(user_id=sub.student_id, content=f"作业【{preview}】已批改，得分：{req.score}", is_read=False))
     
-    notif = Notification(user_id=sub.student_id, content=f"你的作业《{sub.question.content[:10]}...》已被批改，得分：{req.score}", is_read=False)
-    db.add(notif)
     db.commit()
     return {"msg": "批改完成"}
 
-@router.get("/forum/posts")
-def get_all_posts(db: Session = Depends(get_db)):
-    posts = db.query(ForumPost).order_by(ForumPost.created_at.desc()).all()
-    return [{
-        "id": p.id, "title": p.title, "author": p.author.full_name, 
-        "is_pinned": p.is_pinned, "content": p.content[:50]
-    } for p in posts]
-
-@router.delete("/forum/posts/{post_id}")
-def delete_post(post_id: int, db: Session = Depends(get_db)):
-    db.query(ForumPost).filter(ForumPost.id == post_id).delete()
+@router.post("/remind-student")
+def remind_student(req: RemindRequest, db: Session = Depends(get_db)):
+    db.add(Notification(user_id=req.student_id, content=f"【老师提醒】{req.message}", is_read=False))
     db.commit()
-    return {"msg": "已删除"}
-
-@router.put("/forum/posts/{post_id}/pin")
-def toggle_pin(post_id: int, db: Session = Depends(get_db)):
-    post = db.query(ForumPost).filter(ForumPost.id == post_id).first()
-    if post: 
-        post.is_pinned = not post.is_pinned
-        db.commit()
-    return {"msg": "操作成功"}
+    return {"msg": "提醒已发送"}
 
 @router.put("/students/{student_id}/silence")
 def toggle_silence(student_id: int, db: Session = Depends(get_db)):
@@ -192,21 +178,21 @@ def toggle_silence(student_id: int, db: Session = Depends(get_db)):
     if stu:
         stu.is_silenced = not stu.is_silenced
         db.commit()
-        status = "已禁言" if stu.is_silenced else "已解除"
-        return {"msg": f"用户{status}"}
+        return {"msg": "操作成功", "is_silenced": stu.is_silenced}
     return {"msg": "用户不存在"}
 
 @router.post("/add-node")
 def add_node(node: NodeCreate, db: Session = Depends(get_db)):
     new_node = KnowledgeNode(course_id=node.course_id, label=node.label, weight=node.weight)
-    db.add(new_node); db.commit(); db.refresh(new_node)
-    return {"msg": "添加成功", "node_id": new_node.id}
+    db.add(new_node)
+    db.commit()
+    return {"msg": "节点添加成功"}
 
 @router.post("/add-edge")
 def add_edge(edge: EdgeCreate, db: Session = Depends(get_db)):
-    new_edge = KnowledgeEdge(source_id=edge.source_id, target_id=edge.target_id, relation_type=edge.relation)
-    db.add(new_edge); db.commit()
-    return {"msg": "关联成功"}
+    db.add(KnowledgeEdge(source_id=edge.source_id, target_id=edge.target_id, relation_type=edge.relation))
+    db.commit()
+    return {"msg": "连线添加成功"}
 
 @router.get("/course-nodes/{course_id}")
 def get_nodes_list(course_id: int, db: Session = Depends(get_db)):

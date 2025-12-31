@@ -2,10 +2,20 @@ import os
 import sys
 import json
 import random
+from passlib.context import CryptContext
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from app.models import SessionLocal, init_db, User, Course, CourseResource, KnowledgeNode, KnowledgeEdge, LearningRecord, Question, ForumPost
+from app.models import (
+    SessionLocal, init_db, User, Course, CourseResource, 
+    KnowledgeNode, KnowledgeEdge, LearningRecord, Question, 
+    ForumPost, StudentAnswer, Notification, ForumReply, PostLike
+)
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+def get_password_hash(password):
+    return pwd_context.hash(password)
 
 def init():
     print("开始初始化全量真实数据...")
@@ -13,25 +23,35 @@ def init():
     db = SessionLocal()
     
     print("清空旧数据库...")
-    db.query(LearningRecord).delete()
-    db.query(KnowledgeEdge).delete()
-    db.query(KnowledgeNode).delete()
-    db.query(Question).delete()
-    db.query(CourseResource).delete()
-    db.query(Course).delete()
-    db.query(ForumPost).delete()
-    db.query(User).delete()
-    db.commit()
+    try:
+        db.query(Notification).delete()
+        db.query(PostLike).delete() 
+        db.query(ForumReply).delete()
+        db.query(StudentAnswer).delete()
+        db.query(LearningRecord).delete()
+        db.query(KnowledgeEdge).delete()
+        db.query(KnowledgeNode).delete()
+        db.query(Question).delete()
+        db.query(CourseResource).delete()
+        db.query(Course).delete()
+        db.query(ForumPost).delete()
+        db.query(User).delete()
+        db.commit()
+    except Exception as e:
+        print(f"清空数据时遇到轻微错误(可忽略): {e}")
+        db.rollback()
 
-    print("👤 创建基础用户...")
+    print("👤 创建基础用户 (密码均为 123456)...")
+    default_pwd = get_password_hash("123456")
+    
     users = [
-        User(username="admin", role="admin", full_name="系统管理员", hashed_password="fake_hash"),
-        User(username="teacher", role="teacher", full_name="张教授", hashed_password="fake_hash"),
-        User(username="student", role="student", full_name="小瑞", hashed_password="fake_hash", learn_time=120)
+        User(username="admin", role="admin", full_name="系统管理员", hashed_password=default_pwd),
+        User(username="teacher", role="teacher", full_name="张教授", hashed_password=default_pwd),
+        User(username="student", role="student", full_name="小蕊", hashed_password=default_pwd, learn_time=120)
     ]
     db.add_all(users)
     db.commit()
-    
+
     teacher_id = db.query(User).filter(User.role == "teacher").first().id
     student_id = db.query(User).filter(User.role == "student").first().id
 
@@ -42,7 +62,7 @@ def init():
             "nodes": ["变量与类型", "控制流(If/Loop)", "函数(Function)", "类与对象"],
             "resources": [
                 {"title": "Python 环境安装指南", "type": "video", "url": "https://media.w3.org/2010/05/sintel/trailer.mp4"},
-                {"title": "变量命名规范手册", "type": "document", "url": "https://mozilla.github.io/pdf.js/web/compressed.tracemonkey-pldi-09.pdf"}
+                {"title": "变量命名规范手册", "type": "document", "url": "#"}
             ],
             "questions": [
                 {"q": "Python 中打印输出的函数是？", "opts": ["echo()", "print()", "console.log()", "write()"], "ans": 1},
@@ -119,7 +139,7 @@ def init():
     ]
 
     for c_data in courses_data:
-        print(f"创建课程: {c_data['title']}...")
+        print(f"📚 创建课程: {c_data['title']}...")
         course = Course(
             title=c_data['title'],
             description=c_data['desc'],
@@ -128,7 +148,7 @@ def init():
         )
         db.add(course)
         db.commit()
-        
+
         for res in c_data['resources']:
             db.add(CourseResource(
                 course_id=course.id, 
@@ -136,13 +156,14 @@ def init():
                 type=res['type'], 
                 url=res['url']
             ))
-            
+
         for q in c_data['questions']:
             db.add(Question(
                 course_id=course.id,
                 content=q['q'],
-                options_json=json.dumps(q['opts']),
-                correct_answer=q['ans']
+                options_json=json.dumps(q['opts'], ensure_ascii=False),
+                correct_answer=q['ans'],
+                type="choice" 
             ))
             
         nodes = []
@@ -181,9 +202,12 @@ def init():
     
     db.commit()
     db.close()
-    print("\n量真实数据初始化完成！")
-    print("学生账号: student / 123456")
-    print("包含 6 门完整课程 (Python, 数学, 物理, 英语, 历史, 化学)")
+    print("\n全量真实数据初始化完成！")
+    print("--------------------------------")
+    print("学生账号: student  / 123456")
+    print("教师账号: teacher  / 123456")
+    print("管理员:   admin    / 123456")
+    print("--------------------------------")
 
 if __name__ == "__main__":
     init()

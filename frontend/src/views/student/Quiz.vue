@@ -5,7 +5,8 @@
         <div class="header">
           <span>课程结业测验</span>
           <el-tag v-if="!result">考试中</el-tag>
-          <el-tag type="success" v-else-if="result.passed">已通过</el-tag>
+          <el-tag type="warning" v-else-if="result.requires_review">待批改</el-tag>
+          <el-tag type="success" v-else-if="isPassed">已通过</el-tag>
           <el-tag type="danger" v-else>未通过</el-tag>
         </div>
       </template>
@@ -13,14 +14,25 @@
       <div v-if="questions.length > 0 && !result" class="question-list">
         <div v-for="(q, index) in questions" :key="q.id" class="question-item">
           <div class="q-title">
-            <span class="index">{{ index + 1 }}.</span> {{ q.content }}
+            <span class="index">{{ index + 1 }}.</span>
+            <el-tag size="small" :type="q.type === 'choice' ? 'info' : 'warning'" style="margin-right: 5px;">
+              {{ q.type === 'choice' ? '单选' : '简答' }}
+            </el-tag>
+            {{ q.content }}
           </div>
-          <el-radio-group v-model="userAnswers[index]" class="options-group">
-            <el-radio v-for="(opt, optIndex) in q.options" :key="optIndex" :value="optIndex" border
-              style="margin-bottom: 10px; width: 100%;">
-              {{ opt }}
-            </el-radio>
-          </el-radio-group>
+
+          <div v-if="q.type === 'choice'">
+            <el-radio-group v-model="userAnswers[index]" class="options-group">
+              <el-radio v-for="(opt, optIndex) in q.options" :key="optIndex" :value="String(optIndex)" border
+                style="margin-bottom: 10px; width: 100%;">
+                {{ opt }}
+              </el-radio>
+            </el-radio-group>
+          </div>
+
+          <div v-else>
+            <el-input v-model="userAnswers[index]" type="textarea" :rows="3" placeholder="请输入你的答案..." />
+          </div>
         </div>
 
         <el-button type="primary" size="large" style="width: 100%; margin-top: 20px;" @click="submitQuiz"
@@ -30,18 +42,30 @@
       </div>
 
       <div v-else-if="result" class="result-area">
-        <div class="score-circle" :class="{ pass: result.passed, fail: !result.passed }">
-          {{ result.score }} <span style="font-size: 14px">分</span>
+        <div v-if="result.requires_review">
+          <div class="score-circle pending">
+            <span style="font-size: 16px;">待批改</span>
+          </div>
+          <h2 style="margin: 20px 0;">主观题已提交</h2>
+          <p class="feedback">{{ result.msg }}</p>
+          <p class="sub-info">客观题系统评分：{{ result.auto_score }} 分</p>
         </div>
-        <h2 style="margin: 20px 0;">{{ result.passed ? '恭喜！测验通过' : '很遗憾，请继续加油' }}</h2>
-        <p class="feedback">{{ result.mastery_update }}</p>
+
+        <div v-else>
+          <div class="score-circle" :class="{ pass: isPassed, fail: !isPassed }">
+            {{ result.auto_score }} <span style="font-size: 14px">分</span>
+          </div>
+          <h2 style="margin: 20px 0;">{{ isPassed ? '恭喜！测验通过' : '很遗憾，请继续加油' }}</h2>
+          <p class="feedback">{{ result.msg }}</p>
+        </div>
 
         <div class="actions">
           <el-button @click="$router.push('/student')">返回首页</el-button>
-          <el-button v-if="result.passed" type="primary" @click="$router.push('/student/profile')">查看能力提升</el-button>
+          <el-button v-if="!result.requires_review && isPassed" type="primary"
+            @click="$router.push('/student/profile')">查看能力提升</el-button>
         </div>
 
-        <div v-if="!result.passed" style="margin-top: 20px;">
+        <div v-if="!result.requires_review && !isPassed" style="margin-top: 20px;">
           <el-button text @click="retry">再做一次</el-button>
         </div>
       </div>
@@ -52,7 +76,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import axios from 'axios'
 import { ElMessage } from 'element-plus'
@@ -65,12 +89,17 @@ const result = ref(null)
 const loading = ref(false)
 const submitting = ref(false)
 
+const isPassed = computed(() => {
+  if (!result.value || result.value.requires_review) return false
+  return result.value.auto_score >= 60
+})
+
 const fetchQuestions = async () => {
   loading.value = true
   try {
     const res = await axios.get(`http://localhost:8000/quiz/${courseId}`)
     questions.value = res.data
-    userAnswers.value = new Array(questions.value.length).fill(null)
+    userAnswers.value = new Array(questions.value.length).fill('')
     result.value = null
   } catch (error) {
     ElMessage.error("获取题目失败")
@@ -81,25 +110,35 @@ const fetchQuestions = async () => {
 
 const retry = () => {
   result.value = null
-  userAnswers.value = new Array(questions.value.length).fill(null)
+  userAnswers.value = new Array(questions.value.length).fill('')
 }
 
 const submitQuiz = async () => {
-  if (userAnswers.value.includes(null)) {
+  const hasEmpty = userAnswers.value.some(ans => ans === null || ans === '')
+  if (hasEmpty) {
     return ElMessage.warning("还有题目未完成，请检查")
   }
 
   submitting.value = true
   try {
     const token = localStorage.getItem('token')
+    const payload = questions.value.map((q, index) => ({
+      question_id: q.id,
+      answer: userAnswers.value[index]
+    }))
+
     const res = await axios.post(
       `http://localhost:8000/quiz/${courseId}/submit`,
-      userAnswers.value,
+      payload,
       { headers: { Authorization: `Bearer ${token}` } }
     )
+
     result.value = res.data
-    if (result.value.passed) {
-      ElMessage.success("恭喜！知识点掌握状态已更新数据库")
+
+    if (result.value.requires_review) {
+      ElMessage.info("提交成功，请等待老师批改主观题")
+    } else if (isPassed.value) {
+      ElMessage.success("恭喜！通过测试")
     }
   } catch (error) {
     ElMessage.error("提交失败")
@@ -139,6 +178,8 @@ onMounted(() => {
   margin-bottom: 15px;
   font-weight: bold;
   color: #333;
+  display: flex;
+  align-items: center;
 }
 
 .index {
@@ -151,6 +192,7 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
+  width: 100%;
 }
 
 .result-area {
@@ -185,10 +227,30 @@ onMounted(() => {
   background: #fef0f0;
 }
 
+.score-circle.pending {
+  border-color: #E6A23C;
+  color: #E6A23C;
+  background: #fdf6ec;
+  font-size: 20px;
+}
+
 .feedback {
   color: #909399;
-  margin-bottom: 30px;
+  margin-bottom: 10px;
   font-size: 16px;
+}
+
+.sub-info {
+  color: #666;
+  font-size: 14px;
+  margin-bottom: 30px;
+}
+
+.actions {
+  margin-top: 20px;
+  display: flex;
+  gap: 10px;
+  justify-content: center;
 }
 
 @keyframes fadeIn {
