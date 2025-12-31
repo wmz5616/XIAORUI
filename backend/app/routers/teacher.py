@@ -13,7 +13,11 @@ from ..services.doubao_ai import ai_agent
 router = APIRouter(prefix="/teacher", tags=["Teacher End"])
 
 def get_db():
-    db = SessionLocal(); yield db; db.close()
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 
 class CourseCreate(BaseModel):
     title: str; description: str
@@ -36,29 +40,62 @@ class GradeRequest(BaseModel):
 
 @router.get("/class-monitor")
 def get_class_monitor(db: Session = Depends(get_db)):
+    """
+    获取班级监控数据，包含具体的薄弱点名称
+    """
     records = db.query(LearningRecord).all()
     students = db.query(User).filter(User.role == 'student').all()
-    student_map = {s.id: {"name": s.full_name or s.username, "progress": 0, "weak_count": 0, "is_silenced": s.is_silenced} for s in students}
+    
+    student_map = {
+        s.id: {
+            "name": s.full_name or s.username, 
+            "progress": 0, 
+            "weak_points": set(), 
+            "is_silenced": s.is_silenced
+        } 
+        for s in students
+    }
     
     for r in records:
         if r.student_id in student_map:
-            if r.mastery_level >= 0.8: student_map[r.student_id]["progress"] += 5
-            elif r.mastery_level < 0.6: student_map[r.student_id]["weak_count"] += 1
+            if r.mastery_level >= 0.8: 
+                student_map[r.student_id]["progress"] += 5
+            
+            elif r.mastery_level < 0.6: 
+                raw_status = r.status or "未知知识点"
+                point_name = raw_status
+                
+                if "诊断发现: " in raw_status:
+                    point_name = raw_status.replace("诊断发现: ", "")
+                elif "AI规划: " in raw_status:
+                    point_name = raw_status.replace("AI规划: ", "")
+                
+                if len(point_name) > 8: 
+                    point_name = point_name[:8] + ".."
+                
+                student_map[r.student_id]["weak_points"].add(point_name)
 
     result = []
     for sid, data in student_map.items():
         prog = min(100, data["progress"])
-        status = "Risk" if (data["weak_count"] > 2 or prog < 30) else "Normal"
+        weak_list = list(data["weak_points"])
+
+        status = "Risk" if len(weak_list) > 2 else "Normal"
+        
         result.append({
-            "id": sid, "name": data["name"],
-            "weakness": f"累计 {data['weak_count']} 个薄弱点" if data['weak_count'] > 0 else "无",
-            "progress": prog, "status": status, "is_silenced": data["is_silenced"]
+            "id": sid, 
+            "name": data["name"],
+            "weak_points_list": weak_list,
+            "progress": prog, 
+            "status": status, 
+            "is_silenced": data["is_silenced"]
         })
     return result
 
 @router.post("/generate-report")
 def generate_class_report(db: Session = Depends(get_db)):
-    return {"report": "AI 报告生成功能（复用之前代码即可）"} 
+    students = db.query(User).filter(User.role == 'student').count()
+    return {"report": f"AI教学分析报告<br>本班共有学生 {students} 人。整体学情稳定，建议关注部分薄弱点较多的同学..."} 
 
 @router.post("/remind-student")
 def remind_student(req: RemindRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):

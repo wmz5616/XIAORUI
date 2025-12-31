@@ -1,47 +1,44 @@
 <template>
   <div class="study-room">
     <div class="room-header">
-      <el-button link @click="$router.push('/student')">
+      <el-button link @click="$router.push('/student')" style="color: #fff">
         <el-icon style="margin-right: 5px">
           <ArrowLeft />
-        </el-icon> 退出学习
+        </el-icon> 退出
       </el-button>
       <span class="course-title">{{ courseTitle }}</span>
       <div style="flex: 1"></div>
-      <el-tag type="info">沉浸式学习模式</el-tag>
+      <el-tag type="info" size="small" effect="dark" class="mode-tag">沉浸模式</el-tag>
     </div>
 
     <el-row :gutter="0" class="main-content">
-      <el-col :span="18" style="height: 100%; padding: 20px;">
-        <div class="player-container">
+      <el-col :xs="24" :sm="18" class="player-col">
+        <div class="player-wrapper">
           <div v-if="currentResource" class="resource-viewer">
-            <video v-if="currentResource.type === 'video'" :src="currentResource.url" controls
-              class="video-player"></video>
+            <video v-if="currentResource.type === 'video'" :src="currentResource.url" controls class="video-player"
+              playsinline webkit-playsinline></video>
 
             <div v-else class="doc-viewer">
-              <el-icon :size="80" color="#409EFF">
+              <el-icon :size="60" color="#409EFF">
                 <Document />
               </el-icon>
               <h3>{{ currentResource.title }}</h3>
-              <p>这是一个文档资源，请仔细阅读</p>
-              <el-button type="primary" plain tag="a" :href="currentResource.url" target="_blank">
-                在新窗口打开
+              <p>文档资源请阅读</p>
+              <el-button type="primary" plain tag="a" :href="currentResource.url" target="_blank" size="small">
+                打开文档
               </el-button>
             </div>
           </div>
 
           <div v-else class="empty-state">
-            <el-empty description="请从右侧目录选择一节课开始学习" />
+            <el-empty description="请选择课程" :image-size="100" />
           </div>
         </div>
       </el-col>
 
-      <el-col :span="6" class="sidebar">
+      <el-col :xs="24" :sm="6" class="sidebar-col">
         <div class="sidebar-header">课程目录</div>
-        <el-scrollbar class="resource-list-scroll">
-          <div v-if="loading" style="padding: 20px; text-align: center; color: #999;">加载中...</div>
-          <div v-else-if="resources.length === 0" style="padding: 20px; text-align: center; color: #999;">暂无资源</div>
-
+        <div class="resource-list-container">
           <ul class="resource-list">
             <li v-for="(res, index) in resources" :key="res.id"
               :class="{ active: currentResource && currentResource.id === res.id }" @click="playResource(res)">
@@ -49,7 +46,7 @@
               <div class="res-info">
                 <div class="res-title">{{ res.title }}</div>
                 <div class="res-meta">
-                  <el-tag size="small" :type="res.type === 'video' ? 'primary' : 'warning'">
+                  <el-tag size="small" :type="res.type === 'video' ? 'primary' : 'warning'" effect="plain">
                     {{ res.type === 'video' ? '视频' : '文档' }}
                   </el-tag>
                 </div>
@@ -59,7 +56,7 @@
               </el-icon>
             </li>
           </ul>
-        </el-scrollbar>
+        </div>
 
         <div class="sidebar-footer">
           <el-button type="success" size="large" style="width: 100%" @click="$router.push(`/quiz/${courseId}`)">
@@ -85,67 +82,68 @@ const courseTitle = route.query.title || '课程学习'
 
 const resources = ref([])
 const currentResource = ref(null)
-const loading = ref(false)
 
 const fetchResources = async () => {
-  loading.value = true
   try {
     const res = await axios.get(`http://localhost:8000/student/course/${courseId}/resources`)
     resources.value = res.data
-    if (resources.value.length > 0) {
-      currentResource.value = resources.value[0]
-    }
-  } catch (error) {
-    ElMessage.error("资源加载失败")
-  } finally {
-    loading.value = false
-  }
+    if (resources.value.length > 0) currentResource.value = resources.value[0]
+  } catch (error) { ElMessage.error("资源加载失败") }
 }
 
-const playResource = (res) => {
-  currentResource.value = res
-}
-
-onMounted(() => {
-  fetchResources()
-})
+const playResource = (res) => currentResource.value = res
+onMounted(fetchResources)
 </script>
 
 <style scoped>
 .study-room {
   height: 100vh;
-  background: #1f1f1f;
   display: flex;
   flex-direction: column;
+  background: #1f1f1f;
   color: #fff;
+  overflow: hidden;
 }
 
 .room-header {
+  height: 50px;
   background: #2b2b2b;
-  padding: 0 20px;
-  height: 60px;
   display: flex;
   align-items: center;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  padding: 0 10px;
+  flex-shrink: 0;
 }
 
 .course-title {
-  font-size: 16px;
+  margin-left: 10px;
   font-weight: bold;
-  margin-left: 15px;
-  color: #fff;
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 50%;
 }
 
 .main-content {
   flex: 1;
+  display: flex;
+  flex-direction: row;
   overflow: hidden;
 }
 
-.player-container {
-  background: #000;
+.player-col {
   height: 100%;
-  border-radius: 8px;
-  overflow: hidden;
+  padding: 20px;
+  background: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.player-wrapper {
+  width: 100%;
+  height: 100%;
+  max-width: 1200px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -166,85 +164,115 @@ onMounted(() => {
 }
 
 .doc-viewer {
-  text-align: center;
-  color: #333;
   background: #fff;
-  padding: 40px;
+  color: #333;
+  padding: 20px;
   border-radius: 8px;
-  width: 80%;
-  height: 80%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
+  text-align: center;
+  width: 90%;
 }
 
-.sidebar {
+.sidebar-col {
   background: #2b2b2b;
   border-left: 1px solid #333;
   display: flex;
   flex-direction: column;
+  height: 100%;
 }
 
 .sidebar-header {
-  padding: 15px 20px;
+  padding: 10px 15px;
   font-weight: bold;
   border-bottom: 1px solid #333;
-  color: #eee;
+  background: #333;
 }
 
-.resource-list-scroll {
+.resource-list-container {
   flex: 1;
+  overflow-y: auto;
 }
 
 .resource-list {
-  list-style: none;
   padding: 0;
   margin: 0;
+  list-style: none;
 }
 
 .resource-list li {
-  padding: 15px 20px;
-  border-bottom: 1px solid #333;
+  padding: 12px 15px;
+  border-bottom: 1px solid #383838;
   cursor: pointer;
   display: flex;
   align-items: center;
-  transition: all 0.2s;
-}
-
-.resource-list li:hover {
-  background: #383838;
 }
 
 .resource-list li.active {
-  background: #333;
+  background: #3a3a3a;
   border-left: 3px solid #409EFF;
 }
 
 .res-idx {
-  width: 24px;
-  height: 24px;
-  background: #444;
+  width: 20px;
+  height: 20px;
+  background: #555;
   border-radius: 50%;
   text-align: center;
-  line-height: 24px;
+  line-height: 20px;
   font-size: 12px;
-  margin-right: 12px;
-  color: #aaa;
+  margin-right: 10px;
+  flex-shrink: 0;
 }
 
 .res-info {
   flex: 1;
+  overflow: hidden;
 }
 
 .res-title {
-  font-size: 14px;
-  margin-bottom: 4px;
-  color: #ddd;
+  font-size: 13px;
+  margin-bottom: 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .sidebar-footer {
-  padding: 20px;
+  padding: 10px;
   border-top: 1px solid #333;
+}
+
+@media (max-width: 768px) {
+  .study-room {
+    height: auto;
+    min-height: 100vh;
+    overflow-y: auto;
+  }
+
+  .mode-tag {
+    display: none;
+  }
+
+  .main-content {
+    flex-direction: column;
+  }
+
+  .player-col {
+    height: 35vh;
+    padding: 0;
+    order: 1;
+  }
+
+  .sidebar-col {
+    height: 65vh;
+    border-left: none;
+    border-top: 1px solid #333;
+    order: 2;
+  }
+
+  .video-player {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+  }
 }
 </style>

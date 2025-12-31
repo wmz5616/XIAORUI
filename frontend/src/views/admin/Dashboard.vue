@@ -29,7 +29,7 @@
     <el-card shadow="never">
       <el-tabs v-model="activeTab" @tab-click="handleTabClick">
 
-        <el-tab-pane label="👤 用户与权限" name="users">
+        <el-tab-pane label="用户与权限" name="users">
           <el-table :data="userList" stripe style="width: 100%" border>
             <el-table-column prop="username" label="用户名" width="150" />
             <el-table-column prop="full_name" label="姓名" width="150" />

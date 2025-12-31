@@ -1,72 +1,56 @@
 <template>
   <div class="dashboard-container">
     <div class="top-actions">
-      <el-button type="success" @click="$router.push('/student/graph')">
+      <el-button type="success" @click="$router.push('/student/graph')" class="action-btn">
         <el-icon style="margin-right: 5px">
           <DataLine />
-        </el-icon> 查看知识图谱
-      </el-button>
-      
-      <el-button type="warning" @click="$router.push('/student/diagnostic')">
-        <el-icon style="margin-right: 5px">
-          <FirstAidKit />
-        </el-icon> 智能诊断测试
+        </el-icon>知识图谱
       </el-button>
 
-      <el-button type="primary" plain @click="$router.push('/forum')">
+      <el-button type="warning" @click="$router.push('/student/diagnostic')" class="action-btn">
+        <el-icon style="margin-right: 5px">
+          <FirstAidKit />
+        </el-icon>智能诊断
+      </el-button>
+
+      <el-button type="primary" plain @click="$router.push('/forum')" class="action-btn">
         <el-icon style="margin-right: 5px">
           <ChatDotRound />
-        </el-icon> 进入讨论区
+        </el-icon>讨论区
       </el-button>
     </div>
 
     <el-card class="box-card" shadow="hover">
       <template #header>
         <div class="card-header">
-          <span> AI学习助手</span>
+          <span>AI学习助手</span>
         </div>
       </template>
 
-      <div style="display: flex; gap: 10px; margin-bottom: 20px;">
-        <el-input 
-          v-model="weakPoint" 
-          placeholder="请输入你的薄弱知识点（如：三角函数），AI 将为你规划路径" 
-          style="max-width: 500px;" 
-          clearable
-          @keyup.enter="getAIPath" 
-        />
-        <el-button type="primary" @click="getAIPath" :loading="aiLoading">
+      <div class="ai-input-area">
+        <el-input v-model="weakPoint" placeholder="请输入你的薄弱知识点" class="ai-input" clearable @keyup.enter="getAIPath" />
+        <el-button type="primary" @click="getAIPath" :loading="aiLoading" class="ai-btn">
           <el-icon style="margin-right: 5px">
             <MagicStick />
-          </el-icon> 生成个性化路径
+          </el-icon> 生成路径
         </el-button>
       </div>
 
       <div v-if="aiResult" class="ai-result-area">
-        <el-alert 
-          title="AI 诊断分析" 
-          type="success" 
-          :description="aiResult.logic_reasoning" 
-          show-icon 
-          :closable="false"
-          style="margin-bottom: 20px;" 
-        />
+        <el-alert title="AI诊断分析" type="success" :description="aiResult.logic_reasoning" show-icon :closable="false"
+          style="margin-bottom: 20px;" />
         <el-timeline>
-          <el-timeline-item 
-            v-for="(step, index) in aiResult.recommended_steps" 
-            :key="index" 
-            type="primary"
-            :hollow="true" 
-            :timestamp="'步骤 ' + (index + 1)"
-          >
+          <el-timeline-item v-for="(step, index) in aiResult.recommended_steps" :key="index" type="primary"
+            :hollow="true" :timestamp="'步骤 ' + (index + 1)">
             {{ step }}
           </el-timeline-item>
         </el-timeline>
       </div>
     </el-card>
 
-    <h3 style="margin-top: 30px; display: flex; align-items: center;">
-      推荐课程
+    <h3
+      style="margin-top: 30px; display: flex; align-items: center; padding-left: 5px; border-left: 4px solid #409EFF;">
+      <span style="margin-left: 10px;">推荐课程</span>
       <el-tag type="info" size="small" style="margin-left: 10px">实时更新</el-tag>
     </h3>
 
@@ -78,14 +62,19 @@
     </div>
 
     <el-row :gutter="20" v-else>
-      <el-col :span="8" v-for="course in courses" :key="course.id">
+      <el-col :xs="24" :sm="12" :md="8" v-for="course in courses" :key="course.id">
         <el-card shadow="hover" class="course-card" @click="startLearning(course)">
           <div class="card-content">
-            <div class="cover-placeholder">{{ course.title[0] }}</div>
+            <div class="cover-placeholder" :style="{ backgroundColor: getRandomColor(course.id) }">
+              {{ course.title[0] }}
+            </div>
             <div class="info">
               <span class="course-title">{{ course.title }}</span>
               <p class="desc">{{ course.description || '暂无介绍' }}</p>
-              <el-button type="primary" link>开始学习</el-button>
+              <div class="card-bottom">
+                <el-tag size="small" type="info" effect="plain">讲师: {{ course.teacher_name || 'Teacher' }}</el-tag>
+                <el-button type="primary" link size="small">去学习 ></el-button>
+              </div>
             </div>
           </div>
         </el-card>
@@ -107,38 +96,31 @@ import { DataLine, ChatDotRound, MagicStick, Loading, FirstAidKit } from '@eleme
 
 const router = useRouter()
 const route = useRoute()
-
 const weakPoint = ref('')
 const aiResult = ref(null)
 const aiLoading = ref(false)
 const courses = ref([])
 const loading = ref(false)
+const colors = ['#409EFF', '#67C23A', '#E6A23C', '#F56C6C', '#909399', '#9C27B0']
+const getRandomColor = (id) => colors[id % colors.length]
 
 const getAIPath = async () => {
   if (!weakPoint.value) return ElMessage.warning('请先输入薄弱知识点')
 
   aiLoading.value = true
   aiResult.value = null
-  
   const currentUsername = localStorage.getItem('username') || "同学"
 
   try {
     const res = await axios.post('http://localhost:8000/ai-engine/learning-path', {
-      name: currentUsername,
-      grade: 10,
-      weak_subjects: [weakPoint.value]
-    }, {
-      headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
-    })
-    
+      name: currentUsername, grade: 10, weak_subjects: [weakPoint.value]
+    }, { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } })
+
     aiResult.value = res.data
-    ElMessage.success('AI 路径规划完成！')
+    ElMessage.success('AI路径规划完成！')
   } catch (error) {
-    console.error(error)
-    ElMessage.error(error.response?.data?.error || 'AI 服务连接异常')
-  } finally {
-    aiLoading.value = false
-  }
+    ElMessage.error(error.response?.data?.error || 'AI服务连接异常')
+  } finally { aiLoading.value = false }
 }
 
 const fetchCourses = async () => {
@@ -146,27 +128,18 @@ const fetchCourses = async () => {
   try {
     const res = await axios.get('http://localhost:8000/student/courses')
     courses.value = res.data
-  } catch (error) {
-    console.error("获取课程失败:", error)
-  } finally {
-    loading.value = false
-  }
+  } catch (error) { console.error("获取课程失败:", error) } finally { loading.value = false }
 }
 
 const startLearning = (course) => {
-  router.push({
-    path: `/learn/${course.id}`,
-    query: { title: course.title }
-  })
+  router.push({ path: `/learn/${course.id}`, query: { title: course.title } })
 }
 
 onMounted(() => {
   fetchCourses()
   if (route.query.auto_weakness) {
     weakPoint.value = route.query.auto_weakness
-    setTimeout(() => {
-      getAIPath()
-    }, 500)
+    setTimeout(() => { getAIPath() }, 500)
   }
 })
 </script>
@@ -180,12 +153,23 @@ onMounted(() => {
 
 .top-actions {
   margin-bottom: 20px;
-  text-align: right;
-  border-bottom: 1px solid #eee;
   padding-bottom: 15px;
-  display: flex; 
+  border-bottom: 1px solid #eee;
+  display: flex;
   justify-content: flex-end;
   gap: 10px;
+  flex-wrap: wrap;
+}
+
+.ai-input-area {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.ai-input {
+  max-width: 500px;
+  flex: 1;
 }
 
 .course-card {
@@ -206,14 +190,13 @@ onMounted(() => {
 .cover-placeholder {
   width: 60px;
   height: 60px;
-  background: #409EFF;
-  color: white;
   border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 24px;
   font-weight: bold;
+  color: white;
   margin-right: 15px;
   flex-shrink: 0;
 }
@@ -234,9 +217,51 @@ onMounted(() => {
 .desc {
   font-size: 13px;
   color: #909399;
-  margin: 0 0 5px;
+  margin: 0 0 8px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.card-bottom {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+@media (max-width: 768px) {
+  .dashboard-container {
+    padding: 15px;
+  }
+
+  .top-actions {
+    justify-content: space-between;
+  }
+
+  .action-btn {
+    flex: 1;
+    min-width: 30%;
+    margin-left: 0 !important;
+    padding: 8px 5px;
+    font-size: 13px;
+  }
+
+  .ai-input-area {
+    flex-direction: column;
+  }
+
+  .ai-input {
+    max-width: 100%;
+  }
+
+  .ai-btn {
+    width: 100%;
+  }
+
+  .cover-placeholder {
+    width: 50px;
+    height: 50px;
+    font-size: 20px;
+  }
 }
 </style>

@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import List
 import json
+from datetime import datetime
 
 from ..models import SessionLocal, KnowledgeNode, KnowledgeEdge, LearningRecord, User
 from ..services.doubao_ai import ai_agent
@@ -21,6 +22,13 @@ class StudentProfile(BaseModel):
     name: str
     grade: int
     weak_subjects: List[str]
+
+class DiagnosticRequest(BaseModel):
+    grade: int = 10
+    subject: str = "数学"
+
+class AnalyzeRequest(BaseModel):
+    wrong_questions: List[dict] 
 
 @router.post("/learning-path")
 def generate_path(
@@ -44,12 +52,10 @@ def generate_path(
         print(f"AI 调用失败: {e}")
         return {"error": "AI 服务连接失败", "details": str(e)}
 
-    steps_str = json.dumps(ai_result.get("recommended_steps", []), ensure_ascii=False)
-    
     new_record = LearningRecord(
         student_id=current_user.id,
         knowledge_node_id=0,        
-        mastery_level=0.1,         
+        mastery_level=0.1,
         status=f"AI规划: {profile.weak_subjects[0]}" 
     )
     
@@ -77,29 +83,6 @@ def get_course_graph(course_id: int, db: Session = Depends(get_db)):
     
     return {"nodes": formatted_nodes, "links": formatted_edges, "categories": [{"name": "知识点"}]}
 
-@router.post("/generate-diagnostic-test")
-def generate_diagnostic_test(grade: int, subject: str):
-    """
-    让 AI 生成一套包含主要知识点的诊断试卷
-    """
-    prompt = f"请为{grade}年级{subject}生成一套包含5道单选题的诊断测试，覆盖不同难度的核心知识点..."
-    return ai_agent.generate_quiz(prompt)
-
-@router.post("/analyze-diagnostic-result")
-def analyze_diagnostic(answers: List[dict]):
-    """
-    分析错题，返回薄弱知识点列表
-    """
-    weak_points = ai_agent.analyze_weakness(answers) 
-    return {"weak_points": weak_points}
-
-class DiagnosticRequest(BaseModel):
-    grade: int = 10
-    subject: str = "数学"
-
-class AnalyzeRequest(BaseModel):
-    wrong_questions: List[dict] 
-
 @router.post("/diagnostic/start")
 def start_diagnostic(req: DiagnosticRequest, current_user: User = Depends(get_current_user)):
     print(f"为用户 {current_user.username} 生成诊断题...")
@@ -107,11 +90,38 @@ def start_diagnostic(req: DiagnosticRequest, current_user: User = Depends(get_cu
     return questions
 
 @router.post("/diagnostic/analyze")
-def analyze_diagnostic(req: AnalyzeRequest, current_user: User = Depends(get_current_user)):
-    print(f"分析用户 {current_user.username} 的错题: {req.wrong_questions}")
+def analyze_diagnostic(
+    req: AnalyzeRequest, 
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    print(f"分析用户 {current_user.username} 的错题: {len(req.wrong_questions)} 道")
     
     if not req.wrong_questions:
-        return {"weak_points": ["暂无明显薄弱点（建议预习新课）"]}
+        return {"weak_points": []}
         
-    weak_points = ai_agent.analyze_weakness(req.wrong_questions)
+    weak_points = ai_agent.analyze_weakness(req.wrong_records if hasattr(req, 'wrong_records') else req.wrong_questions)
+
+    new_records = []
+    for point in weak_points:
+        exists = db.query(LearningRecord).filter(
+            LearningRecord.student_id == current_user.id,
+            LearningRecord.status == f"诊断发现: {point}"
+        ).first()
+
+        if not exists:
+            record = LearningRecord(
+                student_id=current_user.id,
+                knowledge_node_id=0,
+                mastery_level=0.2, 
+                last_practice_date=datetime.now(),
+                status=f"诊断发现: {point}"
+            )
+            new_records.append(record)
+    
+    if new_records:
+        db.add_all(new_records)
+        db.commit()
+        print(f"已同步 {len(new_records)} 个薄弱点到教师端")
+
     return {"weak_points": weak_points}

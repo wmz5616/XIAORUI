@@ -1,14 +1,14 @@
 <template>
   <div class="login-container">
     <el-card class="login-card">
-      <h2 class="system-title">XIAORUI 智适应学习平台</h2>
+      <h2 class="system-title">XIAORUI智学平台</h2>
 
       <el-tabs v-model="activeTab" stretch>
 
         <el-tab-pane label="登录" name="login">
           <el-form label-position="top" size="large">
-            <el-form-item label="用户名">
-              <el-input v-model="loginForm.username" placeholder="请输入用户名" :prefix-icon="User" />
+            <el-form-item label="学号/用户名">
+              <el-input v-model="loginForm.username" placeholder="请输入学号/用户名" :prefix-icon="User" />
             </el-form-item>
             <el-form-item label="密码">
               <el-input v-model="loginForm.password" type="password" placeholder="请输入密码" :prefix-icon="Lock"
@@ -18,18 +18,15 @@
               立即登录
             </el-button>
           </el-form>
-          <div class="tips">
-            <p>演示账号：student / 123456</p>
-          </div>
         </el-tab-pane>
 
         <el-tab-pane label="新用户注册" name="register">
           <el-form label-position="top" size="large">
-            <el-form-item label="账号 (用户名)">
-              <el-input v-model="regForm.username" placeholder="设置登录账号" :prefix-icon="User" />
+            <el-form-item label="学号/用户名">
+              <el-input v-model="regForm.username" placeholder="请输入学号/用户名" :prefix-icon="User" />
             </el-form-item>
-            <el-form-item label="真实姓名">
-              <el-input v-model="regForm.full_name" placeholder="例如：张三" :prefix-icon="Postcard" />
+            <el-form-item label="姓名">
+              <el-input v-model="regForm.full_name" placeholder="请输入姓名" :prefix-icon="Postcard" />
             </el-form-item>
             <el-form-item label="设置密码">
               <el-input v-model="regForm.password" type="password" placeholder="设置登录密码" :prefix-icon="Lock"
@@ -48,12 +45,6 @@
         </el-tab-pane>
 
       </el-tabs>
-
-      <div style="margin-top: 20px; text-align: center; border-top: 1px solid #eee; padding-top: 15px;">
-        <el-link type="info" @click="$router.push('/mobile')">
-          📱 切换到手机版演示模式
-        </el-link>
-      </div>
 
     </el-card>
   </div>
@@ -130,14 +121,27 @@ const handleRegister = async () => {
   display: flex;
   justify-content: center;
   align-items: center;
-  height: 100vh;
+  min-height: 100vh;
   background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+  padding: 20px;
 }
 
 .login-card {
   width: 420px;
+  max-width: 100%;
   padding: 20px 30px;
   border-radius: 12px;
+}
+
+@media (max-width: 480px) {
+  .login-card {
+    padding: 15px;
+    width: 95%;
+  }
+
+  .system-title {
+    font-size: 1.2rem;
+  }
 }
 
 .system-title {
