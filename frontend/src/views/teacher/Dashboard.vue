@@ -1,340 +1,558 @@
 <template>
   <div class="teacher-dashboard">
-    <el-card shadow="hover" style="margin-bottom: 20px;">
-      <div class="header-flex">
-        <div class="welcome-text">
-          <h2>教师管理中心</h2>
-          <p style="color: #666; font-size: 14px;">欢迎回来，这里是您的数字化教学管理工作台</p>
+    <el-container>
+      <el-aside width="220px" class="aside-menu">
+        <div class="logo-area">
+          <h2>XIAORUI</h2>
+          <p>教师工作台</p>
         </div>
-        <el-button type="primary" icon="Plus" @click="showCreateCourse = true">新建课程</el-button>
-      </div>
-    </el-card>
+        <el-menu :default-active="activeTab" class="el-menu-vertical" @select="handleMenuSelect">
+          <el-menu-item index="monitor">
+            <el-icon>
+              <DataLine />
+            </el-icon>
+            <span>学情监控</span>
+          </el-menu-item>
+          <el-menu-item index="course">
+            <el-icon>
+              <Reading />
+            </el-icon>
+            <span>课程发布</span>
+          </el-menu-item>
+          <el-menu-item index="homework">
+            <el-icon>
+              <EditPen />
+            </el-icon>
+            <span>作业管理</span>
+          </el-menu-item>
+          <el-menu-item index="grading">
+            <el-icon>
+              <Check />
+            </el-icon>
+            <span>作业批改</span>
+            <el-badge :value="pendingCount" class="badge-item" v-if="pendingCount > 0" />
+          </el-menu-item>
+        </el-menu>
+      </el-aside>
 
-    <el-tabs type="border-card" v-model="activeTab" class="main-tabs">
+      <el-main class="main-content">
+        <header class="content-header">
+          <h3>{{ pageTitle }}</h3>
+          <div class="user-info">
+            <span>欢迎您，老师</span>
+            <el-button link type="danger" @click="logout">退出</el-button>
+          </div>
+        </header>
 
-      <el-tab-pane label="班级管理" name="monitor">
-        <div style="margin-bottom: 15px;">
-          <el-button type="success" plain size="small" @click="generateReport">生成AI教学报告</el-button>
+        <div v-if="activeTab === 'monitor'" class="tab-content fade-in">
+          <el-row :gutter="20">
+            <el-col :span="24">
+              <el-card shadow="hover">
+                <template #header>
+                  <div class="card-header">
+                    <span>班级实时学情</span>
+                    <el-button type="primary" size="small" @click="generateReport">生成AI报告</el-button>
+                  </div>
+                </template>
+                <el-table :data="classData" style="width: 100%" stripe>
+                  <el-table-column prop="name" label="学生姓名" width="120" />
+                  <el-table-column label="综合进度" width="200">
+                    <template #default="scope">
+                      <el-progress :percentage="scope.row.progress" :color="customColors" />
+                    </template>
+                  </el-table-column>
+                  <el-table-column label="风险状态" width="120">
+                    <template #default="scope">
+                      <el-tag :type="scope.row.status === 'Risk' ? 'danger' : 'success'">
+                        {{ scope.row.status === 'Risk' ? '预警' : '正常' }}
+                      </el-tag>
+                    </template>
+                  </el-table-column>
+                  <el-table-column label="薄弱知识点">
+                    <template #default="scope">
+                      <div class="tags-group">
+                        <el-tag v-for="point in scope.row.weak_points_list" :key="point" size="small" type="warning"
+                          effect="plain">
+                          {{ point }}
+                        </el-tag>
+                        <span v-if="scope.row.weak_points_list.length === 0" class="text-gray">无明显薄弱点</span>
+                      </div>
+                    </template>
+                  </el-table-column>
+                  <el-table-column label="操作" width="150">
+                    <template #default="scope">
+                      <el-button size="small" @click="remindStudent(scope.row)">提醒</el-button>
+                      <el-button size="small" :type="scope.row.is_silenced ? 'info' : 'warning'"
+                        @click="toggleSilence(scope.row)">
+                        {{ scope.row.is_silenced ? '取消禁言' : '禁言' }}
+                      </el-button>
+                    </template>
+                  </el-table-column>
+                </el-table>
+              </el-card>
+            </el-col>
+          </el-row>
         </div>
-        <el-table :data="studentData" stripe border style="width: 100%">
-          <el-table-column prop="name" label="姓名" width="120" />
-          <el-table-column prop="status" label="状态" width="100">
-            <template #default="{ row }">
-              <el-tag :type="row.status === 'Risk' ? 'danger' : 'success'" size="small">{{ row.status }}</el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column label="薄弱点">
-            <template #default="{ row }">
-              <el-tag v-for="p in row.weak_points_list" :key="p" type="danger" size="small" style="margin-right:5px">{{
-                p }}</el-tag>
-              <span v-if="!row.weak_points_list?.length" style="color:#ccc;font-size:12px">暂无</span>
-            </template>
-          </el-table-column>
-          <el-table-column label="操作" width="180">
-            <template #default="{ row }">
-              <el-button size="small" type="warning" @click="remindStudent(row)">提醒</el-button>
-              <el-button size="small" :type="row.is_silenced ? 'info' : 'danger'" @click="toggleSilence(row)">
-                {{ row.is_silenced ? '解除' : '禁言' }}
-              </el-button>
-            </template>
-          </el-table-column>
-        </el-table>
-      </el-tab-pane>
 
-      <el-tab-pane label="资源/题库" name="resource">
-        <div class="course-selector-bar">
-          <span class="step-label">第一步：选择课程</span>
-          <el-select v-model="selectedCourseId" placeholder="请选择课程" @change="fetchNodeList" style="width: 240px">
-            <el-option v-for="c in courseList" :key="c.id" :label="c.title" :value="c.id" />
-          </el-select>
+        <div v-if="activeTab === 'course'" class="tab-content fade-in">
+          <el-card class="form-card">
+            <template #header>发布新课程</template>
+            <el-form :model="courseForm" label-width="100px">
+              <el-form-item label="课程名称">
+                <el-input v-model="courseForm.title" placeholder="例如：高等数学(上)" />
+              </el-form-item>
+              <el-form-item label="课程简介">
+                <el-input v-model="courseForm.description" type="textarea" rows="3" />
+              </el-form-item>
+              <el-form-item>
+                <el-button type="primary" @click="createCourse">立即发布</el-button>
+              </el-form-item>
+            </el-form>
+          </el-card>
         </div>
 
-        <el-empty v-if="!selectedCourseId" description="请先在上方选择一个课程" />
-
-        <div v-else>
+        <div v-if="activeTab === 'homework'" class="tab-content fade-in">
           <el-row :gutter="20">
             <el-col :span="12">
-              <el-card header="录入新题目" shadow="hover">
-                <el-form label-position="top">
-                  <el-form-item label="题目内容">
-                    <el-input v-model="newQuestion.content" type="textarea" :rows="2" placeholder="题目描述"></el-input>
-                  </el-form-item>
-                  <el-form-item label="类型">
-                    <el-radio-group v-model="newQuestion.type">
-                      <el-radio value="choice">单选题</el-radio>
-                      <el-radio value="text">主观题</el-radio>
-                    </el-radio-group>
-                  </el-form-item>
-
-                  <div v-if="newQuestion.type === 'choice'" class="choice-box">
-                    <el-input v-for="(o, i) in 4" :key="i" v-model="newQuestion.options[i]"
-                      :placeholder="'选项 ' + 'ABCD'[i]" style="margin-bottom:5px">
-                      <template #prepend>{{ 'ABCD'[i] }}</template>
-                    </el-input>
-                    <div style="margin-top:10px">正确答案：
-                      <el-select v-model="newQuestion.correct_answer" size="small" style="width:100px">
-                        <el-option v-for="(o, i) in 4" :key="i" :label="'ABCD'[i]" :value="String(i)" />
-                      </el-select>
-                    </div>
+              <el-card class="box-card">
+                <template #header>
+                  <div class="card-header">
+                    <span>1. 创建作业包</span>
                   </div>
-
-                  <el-button type="primary" style="width:100%; margin-top:15px" @click="addQuestion">添加题目</el-button>
+                </template>
+                <el-form :model="homeworkForm" label-width="80px">
+                  <el-form-item label="所属课程">
+                    <el-select v-model="homeworkForm.course_id" placeholder="请选择课程" style="width: 100%">
+                      <el-option v-for="c in myCourses" :key="c.id" :label="c.title" :value="c.id" />
+                    </el-select>
+                  </el-form-item>
+                  <el-form-item label="作业标题">
+                    <el-input v-model="homeworkForm.title" placeholder="例如：第一章课后练习" />
+                  </el-form-item>
+                  <el-form-item label="作业说明">
+                    <el-input v-model="homeworkForm.description" type="textarea" />
+                  </el-form-item>
+                  <el-form-item>
+                    <el-button type="primary" @click="createHomework">创建作业</el-button>
+                  </el-form-item>
                 </el-form>
               </el-card>
             </el-col>
 
             <el-col :span="12">
-              <el-card header="上传课件" shadow="hover">
-                <el-upload drag action="#" :http-request="handleUpload" multiple>
-                  <el-icon class="el-icon--upload"><upload-filled /></el-icon>
-                  <div class="el-upload__text">拖拽文件或 <em>点击上传</em></div>
-                </el-upload>
+              <el-card class="box-card">
+                <template #header>
+                  <div class="card-header">
+                    <span>2. 录入题目</span>
+                  </div>
+                </template>
+                <el-form :model="questionForm" label-width="80px">
+                  <el-form-item label="选择课程">
+                    <el-select v-model="questionForm.course_id" placeholder="先选课程" @change="fetchHomeworks"
+                      style="width: 100%">
+                      <el-option v-for="c in myCourses" :key="c.id" :label="c.title" :value="c.id" />
+                    </el-select>
+                  </el-form-item>
+                  <el-form-item label="选择作业">
+                    <el-select v-model="questionForm.homework_id" placeholder="请选择该课程下的作业"
+                      :disabled="!questionForm.course_id" style="width: 100%">
+                      <el-option v-for="h in availableHomeworks" :key="h.id" :label="h.title" :value="h.id" />
+                    </el-select>
+                  </el-form-item>
+                  <el-form-item label="题目类型">
+                    <el-radio-group v-model="questionForm.type">
+                      <el-radio label="choice">单选题</el-radio>
+                      <el-radio label="text">主观题</el-radio>
+                    </el-radio-group>
+                  </el-form-item>
+                  <el-form-item label="题目内容">
+                    <el-input v-model="questionForm.content" type="textarea" rows="2" />
+                  </el-form-item>
+                  <div v-if="questionForm.type === 'choice'">
+                    <el-form-item v-for="(opt, idx) in questionForm.options" :key="idx" :label="'选项 ' + 'ABCD'[idx]">
+                      <el-input v-model="questionForm.options[idx]" />
+                    </el-form-item>
+                    <el-form-item label="正确答案">
+                      <el-select v-model="questionForm.correct_answer" placeholder="选择正确选项">
+                        <el-option v-for="(opt, idx) in questionForm.options" :key="idx" :label="'选项 ' + 'ABCD'[idx]"
+                          :value="idx.toString()" />
+                      </el-select>
+                    </el-form-item>
+                  </div>
+                  <el-form-item>
+                    <el-button type="success" @click="addQuestion"
+                      :disabled="!questionForm.homework_id">添加题目</el-button>
+                  </el-form-item>
+                </el-form>
               </el-card>
             </el-col>
           </el-row>
         </div>
-      </el-tab-pane>
 
-      <el-tab-pane label="作业批改" name="grading">
-        <el-button icon="Refresh" size="small" @click="fetchSubmissions" style="margin-bottom:15px">刷新</el-button>
-        <el-empty v-if="submissions.length === 0" description="暂无待批改作业" />
-
-        <el-card v-for="sub in submissions" :key="sub.id" class="sub-card" shadow="hover">
-          <div slot="header" class="sub-header">
-            <span><strong>{{ sub.student_name }}</strong> 提交了作业</span>
-            <span class="time">{{ sub.submitted_at }}</span>
-          </div>
-          <div class="sub-body">
-            <p><strong>题目：</strong>{{ sub.question_content }}</p>
-            <div class="ans-box"><strong>回答：</strong>{{ sub.answer_content }}</div>
-            <div class="grade-box">
-              <el-input v-model="gradingForm[sub.id].comment" placeholder="评语" size="small" style="margin-bottom:5px" />
-              <el-input-number v-model="gradingForm[sub.id].score" :min="0" :max="100" size="small" />
-              <el-button type="primary" size="small" @click="submitGrade(sub.id)"
-                style="margin-left:10px">提交</el-button>
-            </div>
-          </div>
-        </el-card>
-      </el-tab-pane>
-
-      <el-tab-pane label="社区治理" name="forum">
-        <el-button icon="Refresh" @click="fetchForumPosts" style="margin-bottom:10px">刷新帖子</el-button>
-        <el-table :data="forumPosts" border stripe>
-          <el-table-column prop="title" label="标题" />
-          <el-table-column prop="author_name" label="作者" width="120" />
-          <el-table-column label="状态" width="100">
-            <template #default="{ row }">
-              <el-tag v-if="row.is_pinned" type="danger" effect="dark">置顶</el-tag>
-              <el-tag v-else type="info">普通</el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column label="操作" width="180">
-            <template #default="{ row }">
-              <el-button size="small" :type="row.is_pinned ? 'warning' : 'primary'" @click="togglePin(row)">
-                {{ row.is_pinned ? '取消置顶' : '置顶' }}
-              </el-button>
-              <el-popconfirm title="确定删除？" @confirm="deletePost(row)">
-                <template #reference><el-button size="small" type="danger">删除</el-button></template>
-              </el-popconfirm>
-            </template>
-          </el-table-column>
-        </el-table>
-      </el-tab-pane>
-
-      <el-tab-pane label="知识图谱管理" name="graph">
-        <el-empty description="请在上方选择课程后管理图谱" v-if="!selectedCourseId" />
-        <div v-else>
-          <el-form :inline="true">
-            <el-form-item><el-input v-model="newNode.label" placeholder="节点名称" /></el-form-item>
-            <el-form-item><el-button type="primary" @click="addNode">添加节点</el-button></el-form-item>
-          </el-form>
+        <div v-if="activeTab === 'grading'" class="tab-content fade-in">
+          <el-card>
+            <template #header>待批改作业列表</template>
+            <el-table :data="pendingSubmissions" style="width: 100%">
+              <el-table-column prop="student_name" label="学生" width="120" />
+              <el-table-column prop="homework_title" label="作业名称" width="180" />
+              <el-table-column prop="question_content" label="题目" show-overflow-tooltip />
+              <el-table-column prop="answer_content" label="学生回答" show-overflow-tooltip />
+              <el-table-column prop="submitted_at" label="提交时间" width="160" />
+              <el-table-column label="操作" width="200">
+                <template #default="scope">
+                  <el-button size="small" type="primary" @click="openGradeDialog(scope.row)">批改</el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+          </el-card>
         </div>
-      </el-tab-pane>
+      </el-main>
+    </el-container>
 
-    </el-tabs>
-
-    <el-dialog v-model="showCreateCourse" title="创建课程" width="400px">
-      <el-form label-position="top">
-        <el-form-item label="名称"><el-input v-model="newCourseForm.title" /></el-form-item>
-        <el-form-item label="描述"><el-input v-model="newCourseForm.description" type="textarea" /></el-form-item>
+    <el-dialog v-model="gradeDialogVisible" title="作业批改" width="30%">
+      <el-form :model="gradeForm">
+        <el-form-item label="得分(0-10)">
+          <el-input-number v-model="gradeForm.score" :min="0" :max="10" />
+        </el-form-item>
+        <el-form-item label="评语">
+          <el-input v-model="gradeForm.comment" type="textarea" />
+        </el-form-item>
       </el-form>
-      <template #footer><el-button type="primary" @click="createCourse" style="width:100%">确定</el-button></template>
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="gradeDialogVisible = false">取消</el-button>
+          <el-button type="primary" @click="submitGrade">确认</el-button>
+        </span>
+      </template>
     </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, computed } from 'vue'
+import { useRouter } from 'vue-router'
 import axios from 'axios'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, UploadFilled, Refresh } from '@element-plus/icons-vue'
+import { DataLine, Reading, EditPen, Check } from '@element-plus/icons-vue'
 
-const activeTab = ref('resource')
-const studentData = ref([])
-const courseList = ref([])
-const selectedCourseId = ref(null)
-const submissions = ref([])
-const forumPosts = ref([])
-const gradingForm = reactive({})
-const showCreateCourse = ref(false)
-const newQuestion = reactive({ content: '', type: 'choice', options: ['', '', '', ''], correct_answer: '0' })
-const newCourseForm = reactive({ title: '', description: '' })
-const newNode = reactive({ label: '', weight: 1.0 })
-const getAuth = () => ({ headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } })
-const api = 'http://localhost:8000'
+const router = useRouter()
+const activeTab = ref('monitor')
+const classData = ref([])
+const myCourses = ref([])
+const availableHomeworks = ref([])
+const pendingSubmissions = ref([])
+const gradeDialogVisible = ref(false)
+const currentSubmissionId = ref(null)
 
-const initData = async () => {
+const courseForm = reactive({ title: '', description: '' })
+const homeworkForm = reactive({ course_id: null, title: '', description: '' })
+const questionForm = reactive({
+  course_id: null,
+  homework_id: null,
+  type: 'choice',
+  content: '',
+  options: ['', '', '', ''],
+  correct_answer: ''
+})
+const gradeForm = reactive({ score: 10, comment: '做得不错' })
+
+const pageTitle = computed(() => {
+  const map = {
+    monitor: '班级学情监控中心',
+    course: '课程发布中心',
+    homework: '作业与题库管理',
+    grading: '作业批改控制台'
+  }
+  return map[activeTab.value]
+})
+
+const pendingCount = computed(() => pendingSubmissions.value.length)
+
+const customColors = [
+  { color: '#f56c6c', percentage: 40 },
+  { color: '#e6a23c', percentage: 70 },
+  { color: '#5cb87a', percentage: 100 },
+]
+
+onMounted(() => {
+  fetchMonitorData()
+  fetchMyCourses()
+  fetchPendingSubmissions()
+})
+
+const handleMenuSelect = (index) => {
+  activeTab.value = index
+  if (index === 'monitor') fetchMonitorData()
+  if (index === 'grading') fetchPendingSubmissions()
+}
+
+const fetchMonitorData = async () => {
   try {
-    const [res1, res2] = await Promise.all([
-      axios.get(`${api}/teacher/class-monitor`, getAuth()),
-      axios.get(`${api}/teacher/my-courses`, getAuth())
-    ])
-    studentData.value = res1.data
-    courseList.value = res2.data
-    if (courseList.value.length) selectedCourseId.value = courseList.value[0].id
-  } catch (e) { }
+    const token = localStorage.getItem('token')
+    const res = await axios.get('http://localhost:8000/teacher/class-monitor', {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+    classData.value = res.data
+  } catch (e) {
+    ElMessage.error('获取学情数据失败')
+  }
 }
 
-const generateReport = async () => {
-  const res = await axios.post(`${api}/teacher/generate-report`, {}, getAuth())
-  ElMessageBox.alert(res.data.report, 'AI分析', { dangerouslyUseHTMLString: true })
-}
-const toggleSilence = async (row) => {
-  await axios.put(`${api}/teacher/students/${row.id}/silence`, {}, getAuth())
-  ElMessage.success("操作成功"); initData()
-}
-const remindStudent = (row) => {
-  ElMessageBox.prompt('请输入提醒内容', '发送通知').then(async ({ value }) => {
-    await axios.post(`${api}/teacher/remind-student`, { student_id: row.id, message: value }, getAuth())
-    ElMessage.success('已发送')
-  })
-}
-
-const addQuestion = async () => {
-  if (!selectedCourseId.value) return ElMessage.warning("请先选择课程")
+const fetchMyCourses = async () => {
   try {
-    await axios.post(`${api}/teacher/questions`, { course_id: selectedCourseId.value, ...newQuestion }, getAuth())
-    ElMessage.success("题目已录入")
-    newQuestion.content = ''
-  } catch (e) { ElMessage.error("录入失败") }
-}
-const handleUpload = async (options) => {
-  const fd = new FormData()
-  fd.append('file', options.file)
-  fd.append('course_id', selectedCourseId.value)
-  fd.append('title', options.file.name)
-  await axios.post(`${api}/teacher/upload-resource`, fd, getAuth())
-  ElMessage.success("上传成功")
+    const token = localStorage.getItem('token')
+    const res = await axios.get('http://localhost:8000/teacher/my-courses', {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+    myCourses.value = res.data
+  } catch (e) {
+    console.error(e)
+  }
 }
 
-const fetchSubmissions = async () => {
-  const res = await axios.get(`${api}/teacher/submissions/pending`, getAuth())
-  submissions.value = res.data
-  submissions.value.forEach(s => {
-    if (!gradingForm[s.id]) gradingForm[s.id] = { score: 80, comment: '不错' }
-  })
-}
-const submitGrade = async (id) => {
-  await axios.post(`${api}/teacher/submissions/grade`, { submission_id: id, ...gradingForm[id] }, getAuth())
-  ElMessage.success("批改完成"); fetchSubmissions()
-}
-
-const fetchForumPosts = async () => {
-  const res = await axios.get(`${api}/forum/posts`, getAuth())
-  forumPosts.value = res.data
-}
-const togglePin = async (row) => {
-  await axios.put(`${api}/forum/posts/${row.id}/pin`, {}, getAuth())
-  ElMessage.success("操作成功"); fetchForumPosts()
-}
-const deletePost = async (row) => {
-  await axios.delete(`${api}/forum/posts/${row.id}`, getAuth())
-  ElMessage.success("已删除"); fetchForumPosts()
+const fetchHomeworks = async () => {
+  if (!questionForm.course_id) return
+  try {
+    const token = localStorage.getItem('token')
+    const res = await axios.get(`http://localhost:8000/teacher/course/${questionForm.course_id}/homeworks`, {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+    availableHomeworks.value = res.data
+    questionForm.homework_id = null
+  } catch (e) {
+    ElMessage.error('获取作业列表失败')
+  }
 }
 
 const createCourse = async () => {
-  await axios.post(`${api}/teacher/courses`, newCourseForm, getAuth())
-  ElMessage.success("创建成功"); showCreateCourse.value = false; initData()
+  if (!courseForm.title) return ElMessage.warning('请输入课程名称')
+  try {
+    const token = localStorage.getItem('token')
+    await axios.post('http://localhost:8000/teacher/courses', courseForm, {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+    ElMessage.success('课程发布成功')
+    courseForm.title = ''
+    courseForm.description = ''
+    fetchMyCourses()
+  } catch (e) {
+    ElMessage.error('创建失败')
+  }
 }
 
-const fetchNodeList = () => {}
-const addNode = async () => {
-  await axios.post(`${api}/teacher/add-node`, { course_id: selectedCourseId.value, ...newNode }, getAuth())
-  ElMessage.success("节点已添加")
+const createHomework = async () => {
+  if (!homeworkForm.course_id || !homeworkForm.title) return ElMessage.warning('请补全信息')
+  try {
+    const token = localStorage.getItem('token')
+    await axios.post('http://localhost:8000/teacher/homeworks', homeworkForm, {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+    ElMessage.success('作业创建成功')
+    homeworkForm.title = ''
+    homeworkForm.description = ''
+    if (questionForm.course_id === homeworkForm.course_id) {
+      fetchHomeworks()
+    }
+  } catch (e) {
+    ElMessage.error('创建作业失败')
+  }
 }
 
-onMounted(() => {
-  initData()
-  fetchSubmissions()
-  fetchForumPosts()
-})
+const addQuestion = async () => {
+  if (!questionForm.homework_id || !questionForm.content) return ElMessage.warning('请填写完整')
+  try {
+    const token = localStorage.getItem('token')
+    await axios.post('http://localhost:8000/teacher/questions', questionForm, {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+    ElMessage.success('题目已录入')
+    questionForm.content = ''
+    questionForm.options = ['', '', '', '']
+  } catch (e) {
+    ElMessage.error('录入失败')
+  }
+}
+
+const fetchPendingSubmissions = async () => {
+  try {
+    const token = localStorage.getItem('token')
+    const res = await axios.get('http://localhost:8000/teacher/submissions/pending', {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+    pendingSubmissions.value = res.data
+  } catch (e) {
+    console.error(e)
+  }
+}
+
+const openGradeDialog = (row) => {
+  currentSubmissionId.value = row.id
+  gradeForm.score = 10
+  gradeForm.comment = '回答得很棒，继续加油！'
+  gradeDialogVisible.value = true
+}
+
+const submitGrade = async () => {
+  try {
+    const token = localStorage.getItem('token')
+    await axios.post('http://localhost:8000/teacher/submissions/grade', {
+      submission_id: currentSubmissionId.value,
+      score: gradeForm.score,
+      comment: gradeForm.comment
+    }, {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+    ElMessage.success('批改完成')
+    gradeDialogVisible.value = false
+    fetchPendingSubmissions()
+  } catch (e) {
+    ElMessage.error('提交失败')
+  }
+}
+
+const generateReport = async () => {
+  try {
+    const token = localStorage.getItem('token')
+    const res = await axios.post('http://localhost:8000/teacher/generate-report', {}, {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+    ElMessageBox.alert(res.data.report, 'AI 分析报告', { dangerouslyUseHTMLString: true })
+  } catch (e) {
+    ElMessage.error('生成报告失败')
+  }
+}
+
+const remindStudent = async (student) => {
+  try {
+    const token = localStorage.getItem('token')
+    await axios.post('http://localhost:8000/teacher/remind-student', {
+      student_id: student.id,
+      message: '检测到你最近学习进度滞后，请及时复习。'
+    }, {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+    ElMessage.success(`已发送提醒给 ${student.name}`)
+  } catch (e) {
+    ElMessage.error('发送失败')
+  }
+}
+
+const toggleSilence = async (student) => {
+  try {
+    const token = localStorage.getItem('token')
+    const res = await axios.put(`http://localhost:8000/teacher/students/${student.id}/silence`, {}, {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+    student.is_silenced = res.data.is_silenced
+    ElMessage.success(student.is_silenced ? '已禁言' : '已解除禁言')
+  } catch (e) {
+    ElMessage.error('操作失败')
+  }
+}
+
+const logout = () => {
+  localStorage.removeItem('token')
+  router.push('/login')
+}
 </script>
 
 <style scoped>
 .teacher-dashboard {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 20px;
+  height: 100vh;
+  background-color: #f5f7fa;
 }
 
-.header-flex {
+.aside-menu {
+  background-color: #fff;
+  border-right: 1px solid #e6e6e6;
   display: flex;
-  justify-content: space-between;
+  flex-direction: column;
+}
+
+.logo-area {
+  height: 60px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
   align-items: center;
+  background-color: #409EFF;
+  color: white;
 }
 
-.course-selector-bar {
-  background: #f0f9eb;
-  padding: 15px;
-  border-radius: 4px;
-  margin-bottom: 20px;
-  border: 1px solid #e1f3d8;
+.logo-area h2 {
+  margin: 0;
+  font-size: 20px;
 }
 
-.step-label {
-  font-weight: bold;
-  color: #67C23A;
-  margin-right: 15px;
-}
-
-.choice-box {
-  background: #f9f9f9;
-  padding: 10px;
-  border-radius: 4px;
-  margin-top: 10px;
-}
-
-.sub-card {
-  margin-bottom: 15px;
-}
-
-.sub-header {
-  display: flex;
-  justify-content: space-between;
-  font-size: 14px;
-}
-
-.sub-body {
-  margin-top: 10px;
-  font-size: 14px;
-}
-
-.ans-box {
-  background: #f4f4f5;
-  padding: 10px;
-  margin: 10px 0;
-  border-radius: 4px;
-}
-
-.grade-box {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-top: 10px;
-}
-
-.time {
-  color: #999;
+.logo-area p {
+  margin: 0;
   font-size: 12px;
+  opacity: 0.8;
+}
+
+.el-menu-vertical {
+  border-right: none;
+  flex: 1;
+}
+
+.main-content {
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.content-header {
+  height: 60px;
+  background: white;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 20px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
+  z-index: 10;
+}
+
+.tab-content {
+  padding: 20px;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.tags-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.text-gray {
+  color: #909399;
+  font-size: 12px;
+}
+
+.fade-in {
+  animation: fadeIn 0.4s ease;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.badge-item :deep(.el-badge__content) {
+  top: 10px;
+  right: 0px;
 }
 </style>

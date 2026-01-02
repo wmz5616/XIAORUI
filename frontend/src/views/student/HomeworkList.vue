@@ -1,53 +1,56 @@
 <template>
     <div class="homework-container">
-        <div class="page-header">
+        <div class="header-area">
             <h2>我的作业</h2>
-            <p class="subtitle">查看并完成老师布置的课后作业</p>
+            <p>查看待完成的作业和过往成绩</p>
         </div>
 
-        <div v-if="loading" class="loading-state">
-            <el-icon class="is-loading">
-                <Loading />
-            </el-icon> 加载中...
-        </div>
+        <el-card shadow="hover" class="list-card">
+            <el-table :data="homeworks" style="width: 100%" stripe v-loading="loading">
+                <el-table-column prop="title" label="作业标题" min-width="150" />
+                <el-table-column prop="course_title" label="所属课程" width="150" />
+                <el-table-column prop="teacher_name" label="任课教师" width="120" />
 
-        <div v-else-if="homeworks.length > 0" class="hw-grid">
-            <el-card v-for="item in homeworks" :key="item.course_id" class="hw-card" shadow="hover">
-                <template #header>
-                    <div class="card-header">
-                        <span class="course-name" :title="item.course_title">{{ item.course_title }}</span>
-                        <el-tag :type="getStatusType(item.status)" effect="dark" size="small">
-                            {{ getStatusText(item.status) }}
+                <el-table-column label="状态" width="120">
+                    <template #default="scope">
+                        <el-tag :type="getStatusType(scope.row.status)">
+                            {{ getStatusText(scope.row.status) }}
                         </el-tag>
-                    </div>
-                </template>
+                    </template>
+                </el-table-column>
 
-                <div class="card-body">
-                    <div class="teacher-info">
-                        <el-icon>
-                            <User />
-                        </el-icon> 授课教师：{{ item.teacher_name }}
-                    </div>
+                <el-table-column label="得分" width="100">
+                    <template #default="scope">
+                        <span v-if="scope.row.score !== null" class="score-text">{{ scope.row.score }} 分</span>
+                        <span v-else class="text-gray">-</span>
+                    </template>
+                </el-table-column>
 
-                    <div class="progress-info">
-                        <span>完成进度：</span>
-                        <span class="nums">{{ item.answered_questions }} / {{ item.total_questions }} 题</span>
-                    </div>
-                    <el-progress :percentage="calculatePercent(item)"
-                        :status="item.status === 'completed' ? 'success' : ''" :stroke-width="10"
-                        class="progress-bar" />
+                <el-table-column label="老师评语" min-width="200">
+                    <template #default="scope">
+                        <div v-if="scope.row.comment" class="teacher-comment">
+                            <el-icon>
+                                <ChatLineSquare />
+                            </el-icon>
+                            {{ scope.row.comment }}
+                        </div>
+                        <span v-else class="text-gray">暂无评语</span>
+                    </template>
+                </el-table-column>
 
-                    <div class="actions">
-                        <el-button type="primary" round style="width: 100%"
-                            @click="goQuiz(item.course_id, item.course_title)" :disabled="item.total_questions === 0">
-                            {{ item.status === 'completed' ? '查看成绩 / 重做' : '开始答题' }}
+                <el-table-column label="操作" width="150" fixed="right">
+                    <template #default="scope">
+                        <el-button v-if="scope.row.status === 'pending' || scope.row.status === 'in_progress'"
+                            type="primary" size="small" @click="goToQuiz(scope.row.homework_id)">
+                            开始答题
                         </el-button>
-                    </div>
-                </div>
-            </el-card>
-        </div>
-
-        <el-empty v-else description="太棒了，目前没有待完成的作业！" />
+                        <el-button v-else type="success" plain size="small" @click="goToQuiz(scope.row.homework_id)">
+                            查看详情
+                        </el-button>
+                    </template>
+                </el-table-column>
+            </el-table>
+        </el-card>
     </div>
 </template>
 
@@ -55,13 +58,34 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import axios from 'axios'
-import { Loading, User } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
+import { ChatLineSquare } from '@element-plus/icons-vue'
 
 const router = useRouter()
 const homeworks = ref([])
 const loading = ref(false)
 
-const fetchHomeworks = async () => {
+const getStatusType = (status) => {
+    const map = {
+        pending: 'info',
+        in_progress: 'warning',
+        submitted: 'primary',
+        completed: 'success'
+    }
+    return map[status] || 'info'
+}
+
+const getStatusText = (status) => {
+    const map = {
+        pending: '未开始',
+        in_progress: '进行中',
+        submitted: '待批改',
+        completed: '已完成'
+    }
+    return map[status] || '未知'
+}
+
+onMounted(async () => {
     loading.value = true
     try {
         const token = localStorage.getItem('token')
@@ -69,125 +93,49 @@ const fetchHomeworks = async () => {
             headers: { Authorization: `Bearer ${token}` }
         })
         homeworks.value = res.data
-    } catch (error) {
-        console.error("获取作业列表失败", error)
+    } catch (e) {
+        ElMessage.error('获取作业列表失败')
     } finally {
         loading.value = false
     }
-}
+})
 
-const getStatusType = (status) => {
-    const map = { 'pending': 'info', 'in_progress': 'warning', 'completed': 'success' }
-    return map[status] || 'info'
+const goToQuiz = (id) => {
+    router.push(`/quiz/${id}`)
 }
-
-const getStatusText = (status) => {
-    const map = { 'pending': '未开始', 'in_progress': '进行中', 'completed': '已完成' }
-    return map[status] || '未知'
-}
-
-const calculatePercent = (item) => {
-    if (item.total_questions === 0) return 0
-    return Math.floor((item.answered_questions / item.total_questions) * 100)
-}
-
-const goQuiz = (courseId, title) => {
-    router.push({ path: `/quiz/${courseId}`, query: { title } })
-}
-
-onMounted(fetchHomeworks)
 </script>
 
 <style scoped>
 .homework-container {
-    max-width: 1000px;
-    margin: 0 auto;
+    max-width: 1200px;
+    margin: 20px auto;
     padding: 20px;
 }
 
-.page-header {
-    margin-bottom: 30px;
-    border-bottom: 1px solid #eee;
-    padding-bottom: 10px;
-}
-
-.subtitle {
-    color: #888;
-    font-size: 14px;
-    margin-top: 5px;
-}
-
-.loading-state {
+.header-area {
+    margin-bottom: 20px;
     text-align: center;
-    padding: 40px;
-    color: #999;
 }
 
-.hw-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-    gap: 20px;
-}
-
-.hw-card {
-    border-radius: 8px;
-    transition: transform 0.2s;
-    border: none;
-    box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.05);
-}
-
-.hw-card:hover {
-    transform: translateY(-3px);
-    box-shadow: 0 4px 16px 0 rgba(0, 0, 0, 0.1);
-}
-
-.card-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
-
-.course-name {
+.score-text {
     font-weight: bold;
+    color: #67C23A;
     font-size: 16px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    max-width: 65%;
-    color: #333;
 }
 
-.card-body {
-    padding: 10px 0;
+.text-gray {
+    color: #909399;
+    font-size: 12px;
 }
 
-.teacher-info {
+.teacher-comment {
+    background: #fdf6ec;
+    color: #e6a23c;
+    padding: 5px 10px;
+    border-radius: 4px;
+    font-size: 13px;
     display: flex;
     align-items: center;
     gap: 5px;
-    font-size: 13px;
-    color: #666;
-    margin-bottom: 15px;
-}
-
-.progress-info {
-    display: flex;
-    justify-content: space-between;
-    font-size: 13px;
-    color: #666;
-    margin-bottom: 8px;
-}
-
-.nums {
-    font-weight: bold;
-    color: #333;
-}
-
-.progress-bar {
-    margin-bottom: 20px;
-}
-
-.actions {
-    margin-top: 10px;
 }
 </style>

@@ -3,8 +3,7 @@ from sqlalchemy.orm import Session
 from typing import List, Optional
 from pydantic import BaseModel
 from datetime import datetime
-
-from ..models import SessionLocal, Course, User, LearningRecord, CourseResource, Notification, Question, StudentAnswer
+from ..models import SessionLocal, Course, User, LearningRecord, CourseResource, Notification, Question, StudentAnswer, Homework
 from .auth import get_current_user
 
 router = APIRouter(prefix="/student", tags=["Student End"])
@@ -22,38 +21,69 @@ class StudentUpdate(BaseModel):
 @router.get("/homeworks")
 def get_student_homeworks(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """
-    获取学生作业列表：
-    列出所有有题目的课程，并显示完成进度。
+    获取学生作业列表（适配新 Homework 模型）：
+    1. 遍历所有作业包。
+    2. 计算完成状态（未开始/待批改/已完成）。
+    3. 显示得分和评语。
     """
-    courses_with_questions = db.query(Course).join(Question).distinct().all()
+    all_homeworks = db.query(Homework).all()
     
     homework_list = []
     
-    for course in courses_with_questions:
-        total_questions = db.query(Question).filter(Question.course_id == course.id).count()
+    for hw in all_homeworks:
+        course = db.query(Course).filter(Course.id == hw.course_id).first()
+        if not course: continue
 
-        answered_count = db.query(StudentAnswer).join(Question).filter(
+        questions = hw.questions
+        q_ids = [q.id for q in questions]
+        total_questions = len(q_ids)
+        
+        if total_questions == 0: continue
+
+        answers = db.query(StudentAnswer).filter(
             StudentAnswer.student_id == current_user.id,
-            Question.course_id == course.id
-        ).count()
+            StudentAnswer.question_id.in_(q_ids)
+        ).all()
+        
+        answ_count = len(answers)
 
         status = "pending"
-        if answered_count > 0:
-            if answered_count >= total_questions:
-                status = "completed"
-            else:
+        score_display = None
+        comment_display = None
+        submitted_time = None
+
+        if answ_count > 0:
+            submitted_time = answers[0].submitted_at.strftime("%Y-%m-%d")
+            
+            has_ungraded = any(a.score is None for a in answers)
+            
+            if has_ungraded:
+                status = "submitted"
+            elif answ_count < total_questions:
                 status = "in_progress"
+            else:
+                status = "completed"
+                total_score = sum((a.score or 0) for a in answers)
+                score_display = total_score
+
+                for a in answers:
+                    if a.teacher_comment:
+                        comment_display = a.teacher_comment
+                        break
 
         teacher = db.query(User).filter(User.id == course.teacher_id).first()
         teacher_name = teacher.full_name if teacher else "未知教师"
 
         homework_list.append({
-            "course_id": course.id,
+            "homework_id": hw.id,
+            "title": hw.title,
             "course_title": course.title,
             "teacher_name": teacher_name,
             "total_questions": total_questions,
-            "answered_questions": answered_count,
-            "status": status
+            "status": status,
+            "score": score_display,
+            "comment": comment_display,
+            "submitted_at": submitted_time
         })
         
     return homework_list
@@ -70,8 +100,8 @@ def get_course_resources(course_id: int, db: Session = Depends(get_db)):
 
 @router.get("/profile")
 def get_profile(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    learn_days = 12
-    notes_count = 5 
+    learn_days = 12 
+    notes_count = db.query(StudentAnswer).filter(StudentAnswer.student_id == current_user.id).count()
     
     return {
         "username": current_user.username,
@@ -80,7 +110,7 @@ def get_profile(current_user: User = Depends(get_current_user), db: Session = De
         "learn_time": current_user.learn_time,
         "learn_days": learn_days,
         "notes_count": notes_count,
-        "radar_data": [80, 60, 70, 90, 50, 75]
+        "radar_data": [85, 70, 75, 90, 60, 80]
     }
 
 @router.put("/profile")
@@ -93,6 +123,10 @@ def update_profile(info: StudentUpdate, current_user: User = Depends(get_current
 
 @router.get("/notifications")
 def get_notifications(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """
+    获取消息通知：
+    老师批改作业后，会写入 Notification 表，这里负责读取。
+    """
     notifs = db.query(Notification).filter(
         Notification.user_id == current_user.id
     ).order_by(Notification.created_at.desc()).all()

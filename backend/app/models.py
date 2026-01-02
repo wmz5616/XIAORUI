@@ -4,6 +4,7 @@ from sqlalchemy import create_engine
 from datetime import datetime
 
 SQLALCHEMY_DATABASE_URL = "sqlite:///./xiaorui_full_system.db"
+
 engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
@@ -33,10 +34,24 @@ class Course(Base):
     description = Column(Text)
     teacher_id = Column(Integer, ForeignKey("users.id"))
     status = Column(String, default="draft")
-    
     nodes = relationship("KnowledgeNode", back_populates="course")
     resources = relationship("CourseResource", back_populates="course")
     questions = relationship("Question", back_populates="course")
+    homeworks = relationship("Homework", back_populates="course")
+
+class Homework(Base):
+    """
+    新增作业表：解决作业与普通题目混淆的问题，支持自定义作业名
+    """
+    __tablename__ = "homeworks"
+    id = Column(Integer, primary_key=True, index=True)
+    course_id = Column(Integer, ForeignKey("courses.id"))
+    title = Column(String)
+    description = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.now)
+    
+    course = relationship("Course", back_populates="homeworks")
+    questions = relationship("Question", back_populates="homework")
 
 class CourseResource(Base):
     __tablename__ = "course_resources"
@@ -51,12 +66,14 @@ class Question(Base):
     __tablename__ = "questions"
     id = Column(Integer, primary_key=True, index=True)
     course_id = Column(Integer, ForeignKey("courses.id"))
+    homework_id = Column(Integer, ForeignKey("homeworks.id"), nullable=True)
     content = Column(Text)
     type = Column(String, default="choice")
     options_json = Column(String) 
     correct_answer = Column(String)
     
     course = relationship("Course", back_populates="questions")
+    homework = relationship("Homework", back_populates="questions")
     student_answers = relationship("StudentAnswer", back_populates="question")
 
 class StudentAnswer(Base):

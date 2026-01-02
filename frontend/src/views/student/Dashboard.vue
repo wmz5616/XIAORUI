@@ -1,288 +1,391 @@
 <template>
-  <div class="student-dashboard">
-    <div class="welcome-header">
-      <div class="text-content">
-        <h1>欢迎回来，{{ user.full_name || user.username }}</h1>
-        <p>今天也是充满进步的一天，准备好开始学习了吗？</p>
+  <div class="dashboard-layout">
+    <div class="nav-header">
+      <div class="logo-area">
+        <img src="@/assets/logo.svg" alt="logo" class="logo-icon" />
+        <span class="app-name">XIAORUI 智教</span>
       </div>
-      <div class="stats-overview">
-        <div class="stat-item">
-          <span class="num">{{ user.learn_time || 0 }}</span>
-          <span class="label">学习时长(分)</span>
-        </div>
-        <div class="stat-item">
-          <span class="num">{{ user.learn_days || 1 }}</span>
-          <span class="label">坚持天数</span>
-        </div>
-      </div>
-    </div>
-
-    <h3 class="section-title">学习中心</h3>
-    <div class="feature-grid">
-      <div class="feature-card course-card" @click="goToCourses">
-        <div class="icon-wrapper">
-          <el-icon :size="32">
-            <Reading />
-          </el-icon>
-        </div>
-        <div class="card-info">
-          <h3>我的课程</h3>
-          <p>进入学习室，观看视频与文档</p>
-        </div>
-      </div>
-
-      <div class="feature-card homework-card" @click="$router.push('/student/homework-list')">
-        <div class="icon-wrapper">
-          <el-icon :size="32">
-            <EditPen />
-          </el-icon>
-        </div>
-        <div class="card-info">
-          <h3>我的作业</h3>
-          <p>查看待办作业与批改结果</p>
-        </div>
-      </div>
-
-      <div class="feature-card forum-card" @click="$router.push('/student/forum')">
-        <div class="icon-wrapper">
-          <el-icon :size="32">
-            <ChatLineRound />
-          </el-icon>
-        </div>
-        <div class="card-info">
-          <h3>讨论区</h3>
-          <p>与同学老师交流，解决难题</p>
-        </div>
-      </div>
-
-      <div class="feature-card ai-card" @click="$router.push('/student/ai-diagnosis')">
-        <div class="icon-wrapper">
-          <el-icon :size="32">
-            <DataAnalysis />
-          </el-icon>
-        </div>
-        <div class="card-info">
-          <h3>AI 智能诊断</h3>
-          <p>分析薄弱点，生成个性化建议</p>
-        </div>
-      </div>
-
-      <div class="feature-card profile-card" @click="$router.push('/student/profile')">
-        <div class="icon-wrapper">
-          <el-icon :size="32">
-            <User />
-          </el-icon>
-        </div>
-        <div class="card-info">
-          <h3>个人中心</h3>
-          <p>查看学习数据与能力雷达</p>
-        </div>
+      <el-menu mode="horizontal" :default-active="activeIndex" class="top-menu" :ellipsis="false" router>
+        <el-menu-item index="/student">工作台</el-menu-item>
+        <el-menu-item index="/student/courses">课程中心</el-menu-item>
+        <el-menu-item index="/student/homework-list">我的作业</el-menu-item>
+        <el-menu-item index="/student/ai-diagnosis">AI 诊断</el-menu-item>
+        <el-menu-item index="/student/forum">学习论坛</el-menu-item>
+      </el-menu>
+      <div class="user-area">
+        <el-dropdown>
+          <span class="el-dropdown-link">
+            {{ userInfo.full_name || userInfo.username }}
+            <el-icon class="el-icon--right"><arrow-down /></el-icon>
+          </span>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item @click="$router.push('/student/profile')">个人资料</el-dropdown-item>
+              <el-dropdown-item divided @click="logout">退出登录</el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
       </div>
     </div>
 
-    <h3 class="section-title" style="margin-top: 40px;">最新消息</h3>
-    <div v-if="notifications.length > 0" class="notification-list">
-      <div v-for="n in notifications.slice(0, 3)" :key="n.id" class="notif-item" :class="{ unread: !n.is_read }">
-        <el-tag size="small" :type="n.is_read ? 'info' : 'danger'" style="margin-right: 10px;">
-          {{ n.is_read ? '已读' : '新消息' }}
-        </el-tag>
-        <span class="notif-content">{{ n.content }}</span>
-        <span class="notif-time">{{ n.created_at }}</span>
+    <div class="main-content">
+      <div class="student-dashboard">
+        <el-row :gutter="20">
+          <el-col :span="16">
+            <div class="welcome-card fade-in">
+              <div class="welcome-text">
+                <h2>早安，{{ userInfo.full_name || userInfo.username }}同学</h2>
+                <p>今天也要充满活力地学习哦！你已经坚持学习了 {{ userInfo.learn_days }} 天。</p>
+              </div>
+              <img src="@/assets/logo.svg" class="welcome-img" alt="logo" />
+            </div>
+
+            <el-row :gutter="20" style="margin-top: 20px">
+              <el-col :span="12">
+                <el-card shadow="hover" class="stat-card">
+                  <template #header>
+                    <div class="card-header">
+                      <span>学习时长</span>
+                      <el-tag type="success">本周</el-tag>
+                    </div>
+                  </template>
+                  <div class="stat-value">
+                    {{ userInfo.learn_time }} <span class="unit">分钟</span>
+                  </div>
+                </el-card>
+              </el-col>
+              <el-col :span="12">
+                <el-card shadow="hover" class="stat-card">
+                  <template #header>
+                    <div class="card-header">
+                      <span>已做作业</span>
+                      <el-tag type="warning">累计</el-tag>
+                    </div>
+                  </template>
+                  <div class="stat-value">
+                    {{ userInfo.notes_count }} <span class="unit">次</span>
+                  </div>
+                </el-card>
+              </el-col>
+            </el-row>
+
+            <el-card shadow="hover" style="margin-top: 20px" class="chart-card">
+              <template #header>
+                <span>能力雷达模型</span>
+              </template>
+              <div ref="radarChart" style="width: 100%; height: 300px"></div>
+            </el-card>
+          </el-col>
+
+          <el-col :span="8">
+            <el-card shadow="hover" class="notice-card">
+              <template #header>
+                <div class="card-header">
+                  <span>最新消息</span>
+                  <el-button link type="primary" @click="fetchNotifications">刷新</el-button>
+                </div>
+              </template>
+              <div class="notice-list" v-loading="loadingNotify">
+                <div v-for="notice in notifications" :key="notice.id" class="notice-item"
+                  :class="{ unread: !notice.is_read }" @click="markRead(notice)">
+                  <div class="notice-icon">
+                    <el-icon>
+                      <Bell />
+                    </el-icon>
+                  </div>
+                  <div class="notice-content">
+                    <p class="n-text">{{ notice.content }}</p>
+                    <span class="n-time">{{ notice.created_at }}</span>
+                  </div>
+                  <div class="notice-dot" v-if="!notice.is_read"></div>
+                </div>
+                <el-empty v-if="notifications.length === 0" description="暂无新消息" />
+              </div>
+            </el-card>
+          </el-col>
+        </el-row>
       </div>
     </div>
-    <el-empty v-else description="暂无新消息" :image-size="60" />
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, reactive, onMounted } from 'vue'
 import axios from 'axios'
-import { Reading, ChatLineRound, User, EditPen, DataAnalysis } from '@element-plus/icons-vue'
+import { useRouter } from 'vue-router'
+import * as echarts from 'echarts'
+import { Bell, ArrowDown } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
 
 const router = useRouter()
-const user = ref({})
+const activeIndex = ref('/student')
+const userInfo = reactive({
+  username: '',
+  full_name: '',
+  learn_time: 0,
+  learn_days: 0,
+  notes_count: 0
+})
 const notifications = ref([])
+const loadingNotify = ref(false)
+const radarChart = ref(null)
 
-const fetchData = async () => {
+onMounted(() => {
+  fetchProfile()
+  fetchNotifications()
+})
+
+const fetchProfile = async () => {
   try {
     const token = localStorage.getItem('token')
-    const headers = { Authorization: `Bearer ${token}` }
-
-    const resUser = await axios.get('http://localhost:8000/student/profile', { headers })
-    user.value = resUser.data
-
-    const resNotif = await axios.get('http://localhost:8000/student/notifications', { headers })
-    notifications.value = resNotif.data
-  } catch (error) {
-    console.error("Dashboard data error", error)
+    const res = await axios.get('http://localhost:8000/student/profile', {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+    Object.assign(userInfo, res.data)
+    initChart(res.data.radar_data)
+  } catch (e) {
+    console.error(e)
   }
 }
 
-const goToCourses = () => {
-  router.push('/student/courses')
+const fetchNotifications = async () => {
+  loadingNotify.value = true
+  try {
+    const token = localStorage.getItem('token')
+    const res = await axios.get('http://localhost:8000/student/notifications', {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+    notifications.value = res.data
+  } catch (e) {
+    ElMessage.error('消息获取失败')
+  } finally {
+    loadingNotify.value = false
+  }
 }
 
-onMounted(fetchData)
+const markRead = async (notice) => {
+  if (notice.is_read) return
+  try {
+    const token = localStorage.getItem('token')
+    await axios.put(`http://localhost:8000/student/notifications/${notice.id}/read`, {}, {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+    notice.is_read = true
+  } catch (e) {
+    console.error(e)
+  }
+}
+
+const logout = () => {
+  localStorage.removeItem('token')
+  router.push('/login')
+}
+
+const initChart = (data) => {
+  if (!radarChart.value) return
+  const myChart = echarts.init(radarChart.value)
+  const option = {
+    radar: {
+      indicator: [
+        { name: '逻辑', max: 100 },
+        { name: '记忆', max: 100 },
+        { name: '专注', max: 100 },
+        { name: '计算', max: 100 },
+        { name: '阅读', max: 100 },
+        { name: '创造', max: 100 }
+      ]
+    },
+    series: [
+      {
+        name: '能力值',
+        type: 'radar',
+        data: [
+          {
+            value: data || [60, 60, 60, 60, 60, 60],
+            name: '当前能力'
+          }
+        ]
+      }
+    ]
+  }
+  myChart.setOption(option)
+  window.addEventListener('resize', () => myChart.resize())
+}
 </script>
 
 <style scoped>
-.student-dashboard {
-  max-width: 1100px;
-  margin: 0 auto;
-  padding: 20px;
+.dashboard-layout {
+  min-height: 100vh;
+  background-color: #f5f7fa;
 }
 
-.welcome-header {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  padding: 30px 40px;
-  border-radius: 12px;
+.nav-header {
+  height: 60px;
+  background: #fff;
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  margin-bottom: 30px;
-  box-shadow: 0 4px 15px rgba(118, 75, 162, 0.3);
+  padding: 0 20px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
+  position: sticky;
+  top: 0;
+  z-index: 100;
 }
 
-.welcome-header h1 {
-  margin: 0 0 10px 0;
-  font-size: 24px;
-}
-
-.welcome-header p {
-  margin: 0;
-  opacity: 0.9;
-}
-
-.stats-overview {
+.logo-area {
   display: flex;
-  gap: 40px;
-}
-
-.stat-item {
-  display: flex;
-  flex-direction: column;
   align-items: center;
+  width: 200px;
 }
 
-.stat-item .num {
-  font-size: 28px;
+.logo-icon {
+  width: 32px;
+  height: 32px;
+  margin-right: 10px;
+}
+
+.app-name {
   font-weight: bold;
-}
-
-.stat-item .label {
-  font-size: 12px;
-  opacity: 0.8;
-  margin-top: 4px;
-}
-
-.section-title {
   font-size: 18px;
-  color: #333;
-  margin-bottom: 20px;
-  border-left: 4px solid #764ba2;
-  padding-left: 10px;
+  color: #409EFF;
 }
 
-.feature-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 20px;
-}
-
-.feature-card {
-  background: white;
-  border-radius: 12px;
-  padding: 20px;
-  display: flex;
-  align-items: center;
-  cursor: pointer;
-  transition: all 0.3s;
-  border: 1px solid #eee;
-}
-
-.feature-card:hover {
-  transform: translateY(-5px);
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.05);
-}
-
-.icon-wrapper {
-  width: 50px;
-  height: 50px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-right: 15px;
-  color: white;
-  flex-shrink: 0;
-}
-
-.course-card .icon-wrapper {
-  background: linear-gradient(135deg, #84fab0 0%, #8fd3f4 100%);
-}
-
-.homework-card .icon-wrapper {
-  background: linear-gradient(135deg, #a18cd1 0%, #fbc2eb 100%);
-}
-
-.forum-card .icon-wrapper {
-  background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 99%, #fecfef 100%);
-}
-
-.ai-card .icon-wrapper {
-  background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
-}
-
-.profile-card .icon-wrapper {
-  background: linear-gradient(135deg, #fbc2eb 0%, #a6c1ee 100%);
-}
-
-.card-info h3 {
-  margin: 0 0 5px 0;
-  font-size: 16px;
-  color: #333;
-}
-
-.card-info p {
-  margin: 0;
-  font-size: 12px;
-  color: #999;
-}
-
-.notification-list {
-  background: white;
-  border-radius: 8px;
-  padding: 10px;
-  border: 1px solid #eee;
-}
-
-.notif-item {
-  padding: 12px;
-  border-bottom: 1px solid #f5f5f5;
-  display: flex;
-  align-items: center;
-  font-size: 14px;
-}
-
-.notif-item:last-child {
+.top-menu {
+  flex: 1;
   border-bottom: none;
 }
 
-.notif-content {
-  flex: 1;
-  color: #555;
+.user-area {
+  margin-left: 20px;
+  cursor: pointer;
 }
 
-.notif-time {
-  color: #aaa;
-  font-size: 12px;
-  margin-left: 10px;
+.el-dropdown-link {
+  display: flex;
+  align-items: center;
+  color: #606266;
 }
 
-.unread .notif-content {
+.main-content {
+  max-width: 1200px;
+  margin: 20px auto;
+  padding: 0 20px;
+}
+
+/* 原有的 Dashboard 样式保持不变，略作调整 */
+.welcome-card {
+  background: linear-gradient(135deg, #a1c4fd 0%, #c2e9fb 100%);
+  border-radius: 12px;
+  padding: 30px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: #2c3e50;
+  margin-bottom: 20px;
+}
+
+.welcome-text h2 {
+  font-size: 24px;
+  margin-bottom: 10px;
+}
+
+.welcome-img {
+  height: 100px;
+  opacity: 0.8;
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.stat-value {
+  font-size: 36px;
   font-weight: bold;
-  color: #333;
+  color: #409eff;
+  text-align: center;
+  padding: 20px 0;
+}
+
+.unit {
+  font-size: 14px;
+  color: #909399;
+  font-weight: normal;
+}
+
+.notice-card {
+  height: 100%;
+  min-height: 500px;
+}
+
+.notice-list {
+  max-height: 450px;
+  overflow-y: auto;
+}
+
+.notice-item {
+  display: flex;
+  align-items: flex-start;
+  padding: 15px;
+  border-bottom: 1px solid #ebeef5;
+  cursor: pointer;
+  transition: background 0.3s;
+  position: relative;
+}
+
+.notice-item:hover {
+  background-color: #f5f7fa;
+}
+
+.notice-item.unread {
+  background-color: #ecf5ff;
+}
+
+.notice-icon {
+  margin-right: 12px;
+  color: #409eff;
+  margin-top: 2px;
+}
+
+.notice-content {
+  flex: 1;
+}
+
+.n-text {
+  font-size: 14px;
+  color: #303133;
+  margin-bottom: 5px;
+  line-height: 1.4;
+}
+
+.n-time {
+  font-size: 12px;
+  color: #909399;
+}
+
+.notice-dot {
+  width: 8px;
+  height: 8px;
+  background-color: #f56c6c;
+  border-radius: 50%;
+  position: absolute;
+  top: 15px;
+  right: 15px;
+}
+
+.fade-in {
+  animation: fadeIn 0.6s ease;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 </style>

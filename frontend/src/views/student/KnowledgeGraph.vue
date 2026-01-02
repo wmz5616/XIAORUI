@@ -1,268 +1,193 @@
 <template>
-  <div class="graph-container">
-    <el-card shadow="always" :body-style="{ padding: isMobile ? '10px' : '20px' }">
-      <template #header>
-        <div class="card-header">
-          <div class="header-left">
-            <span class="title">个性化知识图谱</span>
-            <el-select v-model="currentCourseId" placeholder="请选择课程" class="course-select" @change="fetchGraph"
-              size="default">
-              <el-option v-for="item in courseList" :key="item.id" :label="item.title" :value="item.id" />
-            </el-select>
-          </div>
-          <el-button class="refresh-btn" size="small" type="primary" @click="fetchGraph" :loading="loading"
-            :icon="Refresh">
-            {{ isMobile ? '' : '刷新状态' }}
-          </el-button>
-        </div>
-      </template>
-
-      <div v-loading="loading" element-loading-text="正在分析..." class="chart-wrapper">
-        <div v-if="!currentCourseId || (!graphData.nodes || graphData.nodes.length === 0)" class="empty-tip">
-          <span v-if="!currentCourseId">请选择课程</span>
-          <span v-else>暂无数据</span>
-        </div>
-
-        <div v-show="currentCourseId && graphData.nodes && graphData.nodes.length > 0" id="chart-container"
-          class="echart-box"></div>
+  <div class="graph-page">
+    <div class="graph-header">
+      <div class="left">
+        <el-button @click="$router.go(-1)" icon="ArrowLeft" circle />
+        <span class="title">课程知识结构全景图</span>
       </div>
-
-      <div class="legend-info">
-        <div class="legend-item">
-          <span class="dot mastered"></span> 已掌握
-        </div>
-        <div class="legend-item">
-          <span class="dot unmastered"></span> 待学习
-        </div>
-        <div class="legend-note">
-          * 节点越大越重要
-        </div>
+      <div class="right">
+        <el-tag type="info">可缩放/拖拽节点</el-tag>
       </div>
-    </el-card>
+    </div>
+
+    <div class="graph-container" v-loading="loading">
+      <div ref="chartRef" class="echarts-full"></div>
+
+      <div class="sidebar" v-if="selectedNode">
+        <h4>{{ selectedNode.name }}</h4>
+        <p class="node-desc">{{ selectedNode.desc || '暂无描述' }}</p>
+        <el-divider />
+        <p><strong>权重:</strong> {{ selectedNode.value }}</p>
+        <el-button type="primary" size="small" style="width: 100%" @click="closeSidebar">关闭</el-button>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { onMounted, ref, reactive, nextTick, computed } from 'vue';
-import * as echarts from 'echarts';
-import axios from 'axios';
-import { ElMessage } from 'element-plus';
-import { Refresh } from '@element-plus/icons-vue';
+import { ref, onMounted, onBeforeUnmount } from 'vue'
+import { useRoute } from 'vue-router'
+import axios from 'axios'
+import * as echarts from 'echarts'
+import { ElMessage } from 'element-plus'
+import { ArrowLeft } from '@element-plus/icons-vue'
 
-const chartInstance = ref(null);
-const courseList = ref([]);
-const currentCourseId = ref(null);
-const loading = ref(false);
-const graphData = reactive({ nodes: [], links: [] });
-const isMobile = computed(() => window.innerWidth < 768);
+const route = useRoute()
+const courseId = route.params.courseId
+const loading = ref(false)
+const chartRef = ref(null)
+const selectedNode = ref(null)
+let myChart = null
 
-const getAuthHeaders = () => ({
-  headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
-});
+onMounted(async () => {
+  loading.value = true
+  await initChart()
+  loading.value = false
+  window.addEventListener('resize', handleResize)
+})
 
-const initChart = (data) => {
-  const chartDom = document.getElementById('chart-container');
-  if (!chartDom) return;
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', handleResize)
+  if (myChart) myChart.dispose()
+})
 
-  if (chartInstance.value) {
-    chartInstance.value.dispose();
+const handleResize = () => {
+  if (myChart) myChart.resize()
+}
+
+const initChart = async () => {
+  try {
+    const token = localStorage.getItem('token')
+    const res = await axios.get(`http://localhost:8000/ai-engine/knowledge-graph/${courseId}`, {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+
+    if (res.data && res.data.nodes) {
+      renderGraph(res.data)
+    } else {
+      ElMessage.warning('该课程暂无知识图谱数据')
+    }
+  } catch (e) {
+    ElMessage.error('图谱加载失败')
   }
-  chartInstance.value = echarts.init(chartDom);
+}
+
+const renderGraph = (data) => {
+  if (!chartRef.value) return
+  myChart = echarts.init(chartRef.value)
 
   const option = {
-    tooltip: {
-      trigger: 'item',
-      confine: true,
-      formatter: (params) => {
-        if (params.dataType === 'node') {
-          const status = params.data.category === 1 ? '已掌握' : '待强化';
-          return `<strong>${params.name}</strong><br/>状态: ${status}<br/>权重: ${params.value}`;
-        }
-        return '';
-      }
+    title: {
+      text: '知识点关联图谱',
+      top: 'bottom',
+      left: 'right'
     },
+    tooltip: {},
+    animationDuration: 1500,
+    animationEasingUpdate: 'quinticInOut',
     series: [
       {
         type: 'graph',
         layout: 'force',
-        data: data.nodes,
+        data: data.nodes.map(n => ({
+          ...n,
+          itemStyle: { color: getColor(n.value) } // 根据权重上色
+        })),
         links: data.links,
         categories: data.categories,
         roam: true,
-        zoom: isMobile.value ? 0.6 : 1,
         label: {
           show: true,
           position: 'right',
-          fontSize: isMobile.value ? 10 : 12,
           formatter: '{b}'
         },
         lineStyle: {
           color: 'source',
-          curveness: 0.2
+          curveness: 0.3
         },
         emphasis: {
           focus: 'adjacency',
-          scale: true
+          lineStyle: {
+            width: 10
+          }
         },
         force: {
-          repulsion: isMobile.value ? 150 : 300,
-          edgeLength: isMobile.value ? 50 : 100,
-          layoutAnimation: true
+          repulsion: 400,
+          edgeLength: 100
         }
       }
     ]
-  };
+  }
 
-  chartInstance.value.setOption(option);
-};
+  myChart.setOption(option)
 
-const fetchCourses = async () => {
-  try {
-    const res = await axios.get('http://localhost:8000/student/courses');
-    courseList.value = res.data;
-    if (courseList.value.length > 0) {
-      currentCourseId.value = courseList.value[0].id;
-      fetchGraph();
+  myChart.on('click', (params) => {
+    if (params.dataType === 'node') {
+      selectedNode.value = {
+        name: params.name,
+        value: params.value,
+        desc: params.data.description // 假设后端传了description
+      }
     }
-  } catch (error) { console.error(error); }
-};
+  })
+}
 
-const fetchGraph = async () => {
-  if (!currentCourseId.value) return;
-  loading.value = true;
-  graphData.nodes = [];
-  try {
-    const res = await axios.get(`http://localhost:8000/student/knowledge-graph/${currentCourseId.value}`, getAuthHeaders());
-    Object.assign(graphData, res.data);
-    nextTick(() => { if (graphData.nodes && graphData.nodes.length > 0) initChart(res.data); });
-  } catch (error) { ElMessage.error("获取失败"); } finally { loading.value = false; }
-};
+const getColor = (weight) => {
+  if (weight > 1.5) return '#F56C6C' // 核心
+  if (weight > 1.0) return '#E6A23C' // 重要
+  return '#409EFF' // 基础
+}
 
-onMounted(() => {
-  fetchCourses();
-  window.addEventListener('resize', () => chartInstance.value && chartInstance.value.resize());
-});
+const closeSidebar = () => {
+  selectedNode.value = null
+}
 </script>
 
 <style scoped>
-.graph-container {
-  padding: 20px;
+.graph-page {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: #f0f2f5;
 }
 
-.card-header {
+.graph-header {
+  height: 60px;
+  background: #fff;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
-.header-left {
-  display: flex;
-  align-items: center;
-  flex: 1;
+  padding: 0 20px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  z-index: 10;
 }
 
 .title {
-  font-size: 16px;
+  font-size: 18px;
   font-weight: bold;
-  color: #303133;
-  white-space: nowrap;
+  margin-left: 15px;
 }
 
-.course-select {
-  margin-left: 20px;
-  width: 220px;
-}
-
-.chart-wrapper {
-  min-height: 500px;
+.graph-container {
+  flex: 1;
   position: relative;
+  overflow: hidden;
 }
 
-.echart-box {
+.echarts-full {
   width: 100%;
-  height: 500px;
-}
-
-.empty-tip {
-  display: flex;
-  justify-content: center;
-  align-items: center;
   height: 100%;
-  color: #909399;
-  font-size: 14px;
-  background: #fcfcfc;
+}
+
+.sidebar {
   position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-}
-
-.legend-info {
-  margin-top: 15px;
-  border-top: 1px solid #ebeef5;
-  padding-top: 10px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 15px;
-  align-items: center;
-  font-size: 13px;
-  color: #606266;
-}
-
-.legend-item {
-  display: flex;
-  align-items: center;
-}
-
-.dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  margin-right: 5px;
-}
-
-.dot.mastered {
-  background-color: #67C23A;
-}
-
-.dot.unmastered {
-  background-color: #F56C6C;
-}
-
-.legend-note {
-  margin-left: auto;
-  color: #999;
-  font-size: 12px;
-}
-
-@media (max-width: 768px) {
-  .graph-container {
-    padding: 10px;
-  }
-
-  .course-select {
-    margin-left: 10px;
-    flex: 1;
-    width: auto;
-  }
-
-  .refresh-btn {
-    padding: 8px;
-  }
-
-  .chart-wrapper,
-  .echart-box {
-    min-height: 350px;
-    height: 350px;
-  }
-
-  .legend-note {
-    width: 100%;
-    margin-left: 0;
-    margin-top: 5px;
-  }
+  right: 20px;
+  top: 20px;
+  width: 250px;
+  background: rgba(255, 255, 255, 0.95);
+  padding: 20px;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  backdrop-filter: blur(4px);
 }
 </style>

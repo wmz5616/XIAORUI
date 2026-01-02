@@ -4,8 +4,7 @@ from pydantic import BaseModel
 from typing import List, Union, Optional
 import json
 from datetime import datetime
-
-from ..models import SessionLocal, User, LearningRecord, Course, Question, StudentAnswer, KnowledgeNode
+from ..models import SessionLocal, User, LearningRecord, Course, Question, StudentAnswer, KnowledgeNode, Homework
 from .auth import get_current_user
 
 router = APIRouter(prefix="/quiz", tags=["Quiz & Assessment"])
@@ -29,13 +28,21 @@ class SubmitItem(BaseModel):
 
 class QuizResult(BaseModel):
     auto_score: int
+    total_score: int
     msg: str
     requires_review: bool
 
-@router.get("/{course_id}", response_model=List[QuestionModel])
-def get_quiz(course_id: int, db: Session = Depends(get_db)):
-    """获取课程下的所有题目"""
-    db_questions = db.query(Question).filter(Question.course_id == course_id).all()
+@router.get("/{homework_id}", response_model=List[QuestionModel])
+def get_quiz(homework_id: int, db: Session = Depends(get_db)):
+    """
+    获取指定作业下的所有题目
+    参数改为 homework_id，确保只获取该次作业的题
+    """
+    hw = db.query(Homework).filter(Homework.id == homework_id).first()
+    if not hw:
+        raise HTTPException(status_code=404, detail="作业不存在")
+
+    db_questions = db.query(Question).filter(Question.homework_id == homework_id).all()
     
     result = []
     for q in db_questions:
@@ -54,27 +61,33 @@ def get_quiz(course_id: int, db: Session = Depends(get_db)):
         ))
     return result
 
-@router.post("/{course_id}/submit", response_model=QuizResult)
+@router.post("/{homework_id}/submit", response_model=QuizResult)
 def submit_quiz(
-    course_id: int, 
+    homework_id: int, 
     answers: List[SubmitItem], 
     current_user: User = Depends(get_current_user), 
     db: Session = Depends(get_db)
 ):
     """
-    提交作业核心逻辑：
-    1. 客观题：自动比对答案，直接打分（假设每题10分）。
-    2. 主观题：分数置为 None，等待老师批改。
-    3. 保存所有答题记录到 StudentAnswer 表。
+    提交作业逻辑修复：
+    1. 动态计算总分（题目数 * 10）。
+    2. 修复通过率判断逻辑。
     """
-    
+    questions = db.query(Question).filter(Question.homework_id == homework_id).all()
+    if not questions:
+        raise HTTPException(404, "作业题目数据异常")
+        
+    total_questions = len(questions)
+    max_possible_score = total_questions * 10
     total_auto_score = 0
     has_subjective = False
+    valid_q_ids = {q.id: q for q in questions}
     
     for item in answers:
-        q = db.query(Question).filter(Question.id == item.question_id).first()
-        if not q: continue
-        
+        if item.question_id not in valid_q_ids:
+            continue
+            
+        q = valid_q_ids[item.question_id]
         current_score = 0
         is_graded = False
 
@@ -82,7 +95,7 @@ def submit_quiz(
             is_graded = True
             user_ans = str(item.answer).strip()
             correct_ans = str(q.correct_answer).strip()
-            
+
             if user_ans == correct_ans:
                 current_score = 10
                 total_auto_score += current_score
@@ -121,13 +134,17 @@ def submit_quiz(
     if has_subjective:
         return {
             "auto_score": total_auto_score,
+            "total_score": max_possible_score,
             "msg": f"作业已提交！客观题得分 {total_auto_score} 分，主观题请等待老师批改。",
             "requires_review": True
         }
     else:
-        pass_status = "通过" if total_auto_score >= 60 else "未通过"
+        pass_ratio = total_auto_score / max_possible_score if max_possible_score > 0 else 0
+        pass_status = "通过" if pass_ratio >= 0.6 else "未通过"
+        
         return {
             "auto_score": total_auto_score,
-            "msg": f"作业已完成！得分：{total_auto_score} 分。({pass_status})",
+            "total_score": max_possible_score,
+            "msg": f"作业已完成！得分：{total_auto_score} / {max_possible_score} ({pass_status})",
             "requires_review": False
         }

@@ -1,11 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
-from typing import List
+from typing import List, Optional, Set
 import shutil, os, json
 from datetime import datetime
-
-from ..models import SessionLocal, User, Course, CourseResource, Notification, Question, StudentAnswer, LearningRecord, KnowledgeNode, KnowledgeEdge
+from ..models import SessionLocal, User, Course, CourseResource, Notification, Question, StudentAnswer, LearningRecord, KnowledgeNode, KnowledgeEdge, Homework
 from .auth import get_current_user
 
 router = APIRouter(prefix="/teacher", tags=["Teacher End"])
@@ -21,8 +20,14 @@ class CourseCreate(BaseModel):
     title: str
     description: str
 
+class HomeworkCreate(BaseModel):
+    course_id: int
+    title: str
+    description: str = ""
+
 class QuestionCreate(BaseModel):
     course_id: int
+    homework_id: Optional[int] = None
     content: str
     type: str 
     options: List[str] = []
@@ -48,13 +53,19 @@ def get_teacher_courses(current_user: User = Depends(get_current_user), db: Sess
     """获取该老师发布的所有课程（用于下拉菜单）"""
     return db.query(Course).filter(Course.status == "published").all()
 
+@router.get("/course/{course_id}/homeworks")
+def get_course_homeworks(course_id: int, db: Session = Depends(get_db)):
+    """获取课程下的所有作业包"""
+    return db.query(Homework).filter(Homework.course_id == course_id).all()
+
 @router.get("/class-monitor")
 def get_class_monitor(db: Session = Depends(get_db)):
     """
-    获取班级学情监控数据 - 已修复薄弱点显示问题
+    获取班级学情监控数据 - 已修复薄弱点显示“未知知识点”的问题
     """
     records = db.query(LearningRecord).all()
     students = db.query(User).filter(User.role == 'student').all()
+    
     student_map = {
         s.id: {
             "id": s.id,
@@ -72,13 +83,19 @@ def get_class_monitor(db: Session = Depends(get_db)):
                 student_map[r.student_id]["progress"] += 5
 
             elif r.mastery_level < 0.6:
-                node = db.query(KnowledgeNode).filter(KnowledgeNode.id == r.knowledge_node_id).first()
-                point_name = node.label if node else f"未知知识点({r.knowledge_node_id})"
+                point_name = ""
+                if r.knowledge_node_id and r.knowledge_node_id > 0:
+                    node = db.query(KnowledgeNode).filter(KnowledgeNode.id == r.knowledge_node_id).first()
+                    point_name = node.label if node else f"未知节点({r.knowledge_node_id})"
+                else:
+                    if r.status and "AI诊断" in r.status:
+                        point_name = r.status.replace("AI诊断发现:", "").replace("AI诊断发现: ", "").strip()
+                    else:
+                        point_name = r.status or "综合薄弱点"
 
-                if len(point_name) > 8: 
-                    point_name = point_name[:8] + ".."
-                
-                student_map[r.student_id]["weak_points"].add(point_name)
+                if point_name:
+                    display_name = point_name[:8] + ".." if len(point_name) > 8 else point_name
+                    student_map[r.student_id]["weak_points"].add(display_name)
 
     return [{
         "id": v["id"],
@@ -101,6 +118,14 @@ def create_course(course: CourseCreate, current_user: User = Depends(get_current
     db.commit()
     return {"msg": "课程创建成功", "id": new_course.id}
 
+@router.post("/homeworks")
+def create_homework(hw: HomeworkCreate, db: Session = Depends(get_db)):
+    """新建一个作业包"""
+    new_hw = Homework(course_id=hw.course_id, title=hw.title, description=hw.description)
+    db.add(new_hw)
+    db.commit()
+    return {"msg": "作业创建成功", "id": new_hw.id}
+
 @router.post("/upload-resource")
 async def upload_resource(course_id: int = Form(...), title: str = Form(...), file: UploadFile = File(...), db: Session = Depends(get_db)):
     os.makedirs("uploads", exist_ok=True)
@@ -117,7 +142,7 @@ async def upload_resource(course_id: int = Form(...), title: str = Form(...), fi
 @router.post("/questions")
 def create_question(q: QuestionCreate, db: Session = Depends(get_db)):
     """
-    录入题目：关联 CourseID，确保学生能看到
+    录入题目：支持关联 CourseID 和 HomeworkID
     """
     course = db.query(Course).filter(Course.id == q.course_id).first()
     if not course:
@@ -127,6 +152,7 @@ def create_question(q: QuestionCreate, db: Session = Depends(get_db)):
     
     new_q = Question(
         course_id=q.course_id, 
+        homework_id=q.homework_id,
         content=q.content, 
         type=q.type,
         options_json=options_str, 
@@ -138,14 +164,17 @@ def create_question(q: QuestionCreate, db: Session = Depends(get_db)):
 
 @router.get("/submissions/pending")
 def get_pending_submissions(db: Session = Depends(get_db)):
-    """获取待批改（score 为 None）的作业"""
+    """获取待批改（score 为 None）的作业，包含作业标题信息"""
     subs = db.query(StudentAnswer).filter(StudentAnswer.score == None).all()
     result = []
     for s in subs:
         if s.question and s.student:
+            hw_title = s.question.homework.title if s.question.homework else "普通练习"
+            
             result.append({
                 "id": s.id,
                 "student_name": s.student.full_name,
+                "homework_title": hw_title,
                 "question_content": s.question.content,
                 "answer_content": s.answer_content,
                 "submitted_at": s.submitted_at.strftime("%Y-%m-%d %H:%M")
@@ -161,7 +190,7 @@ def grade_submission(req: GradeRequest, db: Session = Depends(get_db)):
     sub.teacher_comment = req.comment
 
     preview = sub.question.content[:10] + "..." if sub.question else "作业"
-    db.add(Notification(user_id=sub.student_id, content=f"作业【{preview}】已批改，得分：{req.score}", is_read=False))
+    db.add(Notification(user_id=sub.student_id, content=f"你的题目【{preview}】已被老师批改，得分：{req.score}，评语：{req.comment}", is_read=False))
     
     db.commit()
     return {"msg": "批改完成"}
