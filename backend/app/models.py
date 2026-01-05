@@ -133,12 +133,20 @@ class ForumReply(Base):
     __tablename__ = "forum_replies"
     id = Column(Integer, primary_key=True, index=True)
     post_id = Column(Integer, ForeignKey("forum_posts.id"))
+    
+    parent_id = Column(Integer, ForeignKey("forum_replies.id"), nullable=True)
+    
     author_id = Column(Integer, ForeignKey("users.id"))
     content = Column(Text)
+    
+    is_hidden = Column(Boolean, default=False)
+    
     created_at = Column(DateTime, default=datetime.now)
     
     post = relationship("ForumPost", back_populates="replies")
     author = relationship("User", back_populates="replies")
+    
+    parent = relationship("ForumReply", remote_side=[id], backref="children")
 
 class PostLike(Base):
     __tablename__ = "post_likes"

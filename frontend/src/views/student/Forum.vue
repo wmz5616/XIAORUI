@@ -1,320 +1,557 @@
 <template>
   <div class="forum-container">
-    <div class="header-action">
-      <div class="header-text">
-        <h2>学习讨论区</h2>
-        <p class="subtitle">与同学和老师交流，解决学习难题</p>
-      </div>
-      <el-button type="primary" size="large" icon="Edit" @click="dialogVisible = true">我要提问</el-button>
+    <div class="header">
+      <h2>课程讨论区</h2>
+      <button v-if="!isSilenced" @click="showPostModal = true" class="btn-primary">发布新帖</button>
     </div>
 
-    <div v-if="loading" class="loading-state">
-      <el-icon class="is-loading">
-        <Loading />
-      </el-icon> 加载中...
-    </div>
+    <div class="posts-list">
+      <div v-for="post in posts" :key="post.id" class="post-card">
+        <div class="post-header">
+          <span class="author-tag" :class="post.role">{{ getRoleLabel(post.role) }}</span>
+          <span class="author-name">{{ post.author_name }}</span>
+          <span class="post-time">{{ formatDate(post.created_at) }}</span>
+          <span v-if="post.is_pinned" class="pinned-tag">置顶</span>
+        </div>
 
-    <div v-else-if="posts.length > 0" class="post-list">
-      <div v-for="post in posts" :key="post.id" class="post-wrapper">
-        <el-card shadow="hover" :class="{ 'pinned-card': post.is_pinned }">
-          <div class="post-header">
-            <el-tag v-if="post.is_pinned" type="danger" effect="dark" size="small" class="pin-tag">置顶</el-tag>
-            <span class="post-title">{{ post.title }}</span>
-            <div class="meta-info">
-              <el-tag size="small" :type="post.role === 'teacher' ? 'warning' : 'info'" effect="plain">
-                {{ post.author_name }} ({{ post.role === 'teacher' ? '教师' : '学生' }})
-              </el-tag>
-              <span class="time">{{ formatDate(post.created_at) }}</span>
+        <h3 class="post-title">{{ post.title }}</h3>
+        <p class="post-content">{{ post.content }}</p>
+
+        <div class="post-actions">
+          <button @click="toggleLike(post)" :class="{ 'liked': post.is_liked }">
+            ❤️ {{ post.like_count }}
+          </button>
+          <button @click="togglePostReply(post.id)">
+            💬 {{ post.reply_count }} 评论
+          </button>
+
+          <div v-if="isTeacherOrAdmin" class="admin-actions">
+            <button @click="togglePin(post)">{{ post.is_pinned ? '取消置顶' : '置顶' }}</button>
+            <button @click="deletePost(post.id)" class="text-red">删除帖子</button>
+          </div>
+        </div>
+
+        <div class="replies-section">
+          <div v-if="activeReplyPostId === post.id" class="reply-input-box">
+            <textarea v-model="newReplyContent" placeholder="写下你的评论..."></textarea>
+            <div class="reply-actions">
+              <button @click="submitReply(post.id)" class="btn-submit">发送</button>
+              <button @click="activeReplyPostId = null" class="btn-cancel">取消</button>
             </div>
           </div>
 
-          <p class="post-content">{{ post.content }}</p>
-
-          <div class="post-footer">
-            <div class="left-actions">
-              <el-button :type="post.is_liked ? 'danger' : 'default'" link size="small" @click="toggleLike(post)">
-                <el-icon>
-                  <StarFilled v-if="post.is_liked" />
-                  <Star v-else />
-                </el-icon>
-                {{ post.is_liked ? '已赞' : '点赞' }} ({{ post.like_count }})
-              </el-button>
-
-              <el-button type="primary" link size="small" @click="toggleReplyBox(post.id)">
-                <el-icon>
-                  <ChatDotRound />
-                </el-icon>
-                {{ activeReplyId === post.id ? '收起回复' : `回复 (${post.reply_count})` }}
-              </el-button>
-            </div>
-
-            <div class="right-actions" v-if="userRole === 'teacher' || userRole === 'admin'">
-              <el-button :type="post.is_pinned ? 'warning' : 'info'" link size="small" @click="togglePin(post)">
-                {{ post.is_pinned ? '取消置顶' : '置顶' }}
-              </el-button>
-              <el-popconfirm title="确定删除此贴？" @confirm="deletePost(post.id)">
-                <template #reference>
-                  <el-button type="danger" link size="small">删除</el-button>
-                </template>
-              </el-popconfirm>
-            </div>
-          </div>
-
-          <div v-if="activeReplyId === post.id" class="reply-section">
-            <el-divider content-position="left">评论区</el-divider>
-
-            <div v-if="post.replies && post.replies.length > 0" class="reply-list">
-              <div v-for="reply in post.replies" :key="reply.id" class="reply-item">
-                <div class="reply-user">
-                  <span :class="{ 'teacher-name': reply.role === 'teacher' }">{{ reply.author_name }}:</span>
-                </div>
-                <div class="reply-content">{{ reply.content }}</div>
-                <div class="reply-time">{{ formatDate(reply.created_at) }}</div>
+          <div v-if="post.replies && post.replies.length > 0" class="replies-list">
+            <div v-for="reply in getRootReplies(post.replies)" :key="reply.id" class="reply-item"
+              :class="{ 'hidden-item': reply.is_hidden }">
+              <div class="reply-header">
+                <span class="reply-author" :class="reply.role">{{ reply.author_name }}</span>
+                <span class="reply-role" v-if="reply.role === 'teacher'"> (老师)</span>
+                <span class="reply-time">{{ formatDate(reply.created_at) }}</span>
+                <span v-if="reply.is_hidden" class="hidden-badge">已隐藏</span>
               </div>
-            </div>
-            <div v-else class="empty-reply">暂无评论，快来抢沙发</div>
 
-            <div class="reply-input">
-              <el-input v-model="replyContent" placeholder="写下你的看法..." class="input-box"
-                @keyup.enter="submitReply(post.id)">
-                <template #append>
-                  <el-button @click="submitReply(post.id)" :loading="replying">发送</el-button>
-                </template>
-              </el-input>
+              <div class="reply-content">{{ reply.content }}</div>
+
+              <div class="reply-footer">
+                <button @click="openSubReply(post.id, reply)" class="btn-text">回复</button>
+
+                <div v-if="isTeacherOrAdmin" class="reply-manage">
+                  <button @click="toggleHideReply(reply)">{{ reply.is_hidden ? '显示' : '隐藏' }}</button>
+                  <button @click="deleteReply(reply.id)" class="text-red">删除</button>
+                </div>
+              </div>
+
+              <div class="sub-replies">
+                <div v-for="sub in getSubReplies(post.replies, reply.id)" :key="sub.id" class="sub-reply-item"
+                  :class="{ 'hidden-item': sub.is_hidden }">
+                  <div class="reply-header">
+                    <span class="reply-author">{{ sub.author_name }}</span>
+                    <span class="reply-role" v-if="sub.role === 'teacher'"> (老师)</span>
+                    <span class="reply-time">{{ formatDate(sub.created_at) }}</span>
+                    <span v-if="sub.is_hidden" class="hidden-badge">已隐藏</span>
+                  </div>
+                  <div class="reply-content">
+                    回复 <span class="reply-target">@{{ reply.author_name }}</span>: {{ sub.content }}
+                  </div>
+                  <div class="reply-footer">
+                    <div v-if="isTeacherOrAdmin" class="reply-manage">
+                      <button @click="toggleHideReply(sub)">{{ sub.is_hidden ? '显示' : '隐藏' }}</button>
+                      <button @click="deleteReply(sub.id)" class="text-red">删除</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div v-if="replyingToId === reply.id" class="sub-reply-input">
+                <input v-model="subReplyContent" :placeholder="'回复 ' + reply.author_name" />
+                <button @click="submitSubReply(post.id, reply.id)">回复</button>
+                <button @click="replyingToId = null" class="btn-cancel">取消</button>
+              </div>
+
             </div>
           </div>
-
-        </el-card>
+        </div>
       </div>
     </div>
-    <el-empty v-else description="暂无讨论，快来提问吧！" />
 
-    <el-dialog v-model="dialogVisible" title="发起提问" width="90%" style="max-width: 500px">
-      <el-form :model="form">
-        <el-form-item label="标题">
-          <el-input v-model="form.title" placeholder="简要描述问题" />
-        </el-form-item>
-        <el-form-item label="内容">
-          <el-input v-model="form.content" type="textarea" :rows="4" />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="submitPost" :loading="submitting">发布</el-button>
-      </template>
-    </el-dialog>
+    <div v-if="showPostModal" class="modal-overlay">
+      <div class="modal-content">
+        <h3>发布新讨论</h3>
+        <input v-model="newPost.title" placeholder="标题" class="input-title" />
+        <textarea v-model="newPost.content" placeholder="内容详情..." class="input-content"></textarea>
+        <div class="modal-actions">
+          <button @click="createPost" class="btn-primary">发布</button>
+          <button @click="showPostModal = false" class="btn-cancel">取消</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, reactive } from 'vue'
-import axios from 'axios'
-import { ElMessage } from 'element-plus'
-import { Edit, Loading, ChatDotRound, Star, StarFilled } from '@element-plus/icons-vue'
-import { jwtDecode } from "jwt-decode";
+import { ref, onMounted, computed } from 'vue';
 
-const posts = ref([])
-const loading = ref(false)
-const dialogVisible = ref(false)
-const submitting = ref(false)
-const replying = ref(false)
-const activeReplyId = ref(null)
-const replyContent = ref("")
-const form = reactive({ title: '', content: '' })
-const userRole = ref('student')
+import axios from 'axios';
 
-const getAuth = () => ({ headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } })
+const posts = ref([]);
+const showPostModal = ref(false);
+const newPost = ref({ title: '', content: '' });
+const newReplyContent = ref('');
+const subReplyContent = ref('');
+const activeReplyPostId = ref(null); 
+const replyingToId = ref(null);     
+const userRole = localStorage.getItem('user_role') || 'student';
+const isSilenced = ref(false);
 
-const checkRole = () => {
-  const token = localStorage.getItem('token')
-  if (token) {
-    try {
-      const decoded = jwtDecode(token)
-      userRole.value = decoded.role
-    } catch (e) {
-      console.error("Token decode failed")
-    }
-  }
-}
-
-const formatDate = (str) => new Date(str).toLocaleString()
+const isTeacherOrAdmin = computed(() => {
+  return ['teacher', 'admin'].includes(userRole);
+});
 
 const fetchPosts = async () => {
-  loading.value = true
   try {
-    const res = await axios.get('http://localhost:8000/forum/posts', getAuth())
-    posts.value = res.data
-  } catch (e) { ElMessage.error("获取列表失败") }
-  finally { loading.value = false }
-}
+    const token = localStorage.getItem('token');
+    const res = await axios.get('http://localhost:8000/forum/posts', {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    posts.value = res.data;
+  } catch (error) {
+    console.error("加载失败", error);
+  }
+};
 
-const submitPost = async () => {
-  if (!form.title || !form.content) return ElMessage.warning("请填写完整")
-  submitting.value = true
+const getRootReplies = (replies) => {
+  return replies.filter(r => !r.parent_id);
+};
+
+const getSubReplies = (replies, parentId) => {
+  return replies.filter(r => r.parent_id === parentId);
+};
+
+const formatDate = (dateStr) => {
+  return new Date(dateStr).toLocaleString();
+};
+
+const getRoleLabel = (role) => {
+  const map = { teacher: '教师', admin: '管理员', student: '学生' };
+  return map[role] || '用户';
+};
+
+const createPost = async () => {
+  if (!newPost.value.title || !newPost.value.content) return alert("请填写完整");
   try {
-    await axios.post('http://localhost:8000/forum/posts', form, getAuth())
-    ElMessage.success("发布成功")
-    dialogVisible.value = false
-    form.title = ''; form.content = ''
-    fetchPosts()
-  } catch (e) { ElMessage.error("发布失败") }
-  finally { submitting.value = false }
-}
+    const token = localStorage.getItem('token');
+    await axios.post('http://localhost:8000/forum/posts', newPost.value, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    showPostModal.value = false;
+    newPost.value = { title: '', content: '' };
+    fetchPosts();
+  } catch (err) {
+    alert(err.response?.data?.detail || "发布失败");
+  }
+};
 
 const toggleLike = async (post) => {
   try {
-    const res = await axios.post(`http://localhost:8000/forum/posts/${post.id}/like`, {}, getAuth())
-    post.is_liked = res.data.is_liked
-    post.like_count += res.data.is_liked ? 1 : -1
-    ElMessage.success(res.data.msg)
-  } catch (e) { ElMessage.error("操作失败") }
-}
-
-const toggleReplyBox = (pid) => {
-  if (activeReplyId.value === pid) {
-    activeReplyId.value = null
-  } else {
-    activeReplyId.value = pid
-    replyContent.value = ""
+    const token = localStorage.getItem('token');
+    await axios.post(`http://localhost:8000/forum/posts/${post.id}/like`, {}, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    fetchPosts();
+  } catch (err) {
+    console.error(err);
   }
-}
+};
+
+const togglePostReply = (postId) => {
+  activeReplyPostId.value = activeReplyPostId.value === postId ? null : postId;
+  newReplyContent.value = '';
+};
 
 const submitReply = async (postId) => {
-  if (!replyContent.value.trim()) return ElMessage.warning("内容不能为空")
-  replying.value = true
+  if (!newReplyContent.value) return;
   try {
-    await axios.post(`http://localhost:8000/forum/posts/${postId}/reply`, { content: replyContent.value }, getAuth())
-    ElMessage.success("回复成功")
-    replyContent.value = ""
-    fetchPosts()
-  } catch (e) { ElMessage.error("回复失败") }
-  finally { replying.value = false }
-}
+    const token = localStorage.getItem('token');
+    await axios.post(`http://localhost:8000/forum/posts/${postId}/reply`, {
+      content: newReplyContent.value
+    }, { headers: { Authorization: `Bearer ${token}` } });
 
-const deletePost = async (id) => {
+    newReplyContent.value = '';
+    activeReplyPostId.value = null;
+    fetchPosts();
+  } catch (err) {
+    alert(err.response?.data?.detail || "回复失败");
+  }
+};
+
+const openSubReply = (postId, reply) => {
+  replyingToId.value = reply.id;
+  subReplyContent.value = '';
+};
+
+const submitSubReply = async (postId, parentId) => {
+  if (!subReplyContent.value) return;
   try {
-    await axios.delete(`http://localhost:8000/forum/posts/${id}`, getAuth())
-    ElMessage.success("已删除")
-    fetchPosts()
-  } catch (e) { ElMessage.error("删除失败") }
-}
+    const token = localStorage.getItem('token');
+    await axios.post(`http://localhost:8000/forum/posts/${postId}/reply`, {
+      content: subReplyContent.value,
+      parent_id: parentId
+    }, { headers: { Authorization: `Bearer ${token}` } });
+
+    subReplyContent.value = '';
+    replyingToId.value = null;
+    fetchPosts();
+  } catch (err) {
+    alert(err.response?.data?.detail || "回复失败");
+  }
+};
+
+const toggleHideReply = async (reply) => {
+  try {
+    const token = localStorage.getItem('token');
+    await axios.put(`http://localhost:8000/forum/replies/${reply.id}/hide`, {}, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    fetchPosts();
+  } catch (err) {
+    alert("操作失败");
+  }
+};
+
+const deleteReply = async (replyId) => {
+  if (!confirm("确定删除这条评论吗？")) return;
+  try {
+    const token = localStorage.getItem('token');
+    await axios.delete(`http://localhost:8000/forum/replies/${replyId}`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    fetchPosts();
+  } catch (err) {
+    alert("删除失败");
+  }
+};
 
 const togglePin = async (post) => {
   try {
-    await axios.put(`http://localhost:8000/forum/posts/${post.id}/pin`, {}, getAuth())
-    ElMessage.success("操作成功")
-    fetchPosts()
-  } catch (e) { ElMessage.error("操作失败") }
-}
+    const token = localStorage.getItem('token');
+    await axios.put(`http://localhost:8000/forum/posts/${post.id}/pin`, {}, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    fetchPosts();
+  } catch (err) {
+    alert("操作失败");
+  }
+};
+
+const deletePost = async (postId) => {
+  if (!confirm("确定删除整个帖子吗？")) return;
+  try {
+    const token = localStorage.getItem('token');
+    await axios.delete(`http://localhost:8000/forum/posts/${postId}`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    fetchPosts();
+  } catch (err) {
+    alert("删除失败");
+  }
+};
 
 onMounted(() => {
-  checkRole()
-  fetchPosts()
-})
+  fetchPosts();
+});
 </script>
 
 <style scoped>
 .forum-container {
   max-width: 900px;
-  margin: 20px auto;
-  padding: 0 15px;
+  margin: 0 auto;
+  padding: 20px;
 }
 
-.header-action {
+.header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 20px;
-  border-bottom: 2px solid #f0f2f5;
-  padding-bottom: 15px;
 }
 
-.post-wrapper {
+.btn-primary {
+  background-color: #4CAF50;
+  color: white;
+  padding: 8px 16px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.post-card {
+  background: white;
+  border: 1px solid #eee;
+  border-radius: 8px;
+  padding: 20px;
   margin-bottom: 20px;
-}
-
-.pinned-card {
-  border: 1px solid #ffcc99;
-  background: #fffaf5;
-}
-
-.pin-tag {
-  margin-right: 8px;
-  vertical-align: text-bottom;
-}
-
-.post-title {
-  font-size: 16px;
-  font-weight: bold;
-  color: #333;
-  margin-right: 10px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 }
 
 .post-header {
   display: flex;
-  align-items: center;
-  margin-bottom: 12px;
-  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 0.9em;
+  color: #666;
+  margin-bottom: 10px;
 }
 
-.meta-info {
-  margin-left: auto;
-  font-size: 12px;
-  color: #999;
+.author-tag {
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.8em;
+}
+
+.author-tag.teacher {
+  background: #e3f2fd;
+  color: #1976d2;
+}
+
+.author-tag.admin {
+  background: #fce4ec;
+  color: #c2185b;
+}
+
+.author-tag.student {
+  background: #f5f5f5;
+  color: #616161;
+}
+
+.pinned-tag {
+  background: #fff3cd;
+  color: #856404;
+  padding: 0 5px;
+  border-radius: 3px;
+}
+
+.post-title {
+  margin: 0 0 10px 0;
+  color: #333;
 }
 
 .post-content {
-  font-size: 14px;
-  color: #555;
+  color: #444;
   line-height: 1.6;
   margin-bottom: 15px;
-  white-space: pre-wrap;
 }
 
-.post-footer {
+.post-actions {
   display: flex;
-  justify-content: space-between;
-  border-top: 1px solid #f0f0f0;
-  padding-top: 10px;
+  gap: 15px;
+  border-bottom: 1px solid #f0f0f0;
+  padding-bottom: 10px;
+  margin-bottom: 15px;
 }
 
-.reply-section {
-  background: #fafafa;
-  padding: 15px;
+.post-actions button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #666;
+  font-size: 0.9em;
+}
+
+.post-actions button.liked {
+  color: #e91e63;
+}
+
+.admin-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 10px;
+}
+
+.text-red {
+  color: #f44336 !important;
+}
+
+.replies-list {
   margin-top: 15px;
-  border-radius: 4px;
 }
 
 .reply-item {
-  padding: 8px 0;
-  border-bottom: 1px dashed #eee;
-  font-size: 13px;
+  border-bottom: 1px solid #f9f9f9;
+  padding: 10px 0;
 }
 
-.reply-user {
-  font-weight: bold;
+.hidden-item {
+  opacity: 0.6;
+  background: #fafafa;
+}
+
+.hidden-badge {
+  background: #eee;
+  color: #999;
+  font-size: 0.7em;
+  padding: 1px 4px;
+  margin-left: 5px;
+}
+
+.reply-header {
+  font-size: 0.85em;
+  color: #888;
   margin-bottom: 4px;
 }
 
-.teacher-name {
-  color: #E6A23C;
+.reply-author {
+  font-weight: bold;
+  color: #333;
 }
 
-.reply-time {
-  color: #aaa;
-  font-size: 12px;
-  margin-top: 2px;
-  text-align: right;
+.reply-role {
+  color: #1976d2;
+  font-size: 0.8em;
 }
 
-.reply-input {
-  margin-top: 15px;
+.reply-content {
+  font-size: 0.95em;
+  color: #333;
+  margin-bottom: 6px;
 }
 
-.empty-reply {
-  text-align: center;
-  color: #999;
-  padding: 10px;
-  font-size: 12px;
+.reply-footer {
+  display: flex;
+  gap: 10px;
+  font-size: 0.8em;
+}
+
+.reply-manage {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+}
+
+.btn-text {
+  background: none;
+  border: none;
+  color: #1976d2;
+  cursor: pointer;
+  padding: 0;
+}
+
+.sub-replies {
+  margin-left: 20px;
+  margin-top: 8px;
+  padding-left: 10px;
+  border-left: 2px solid #f0f0f0;
+}
+
+.sub-reply-item {
+  margin-top: 8px;
+  padding: 5px;
+  background: #fdfdfd;
+}
+
+.reply-target {
+  color: #1976d2;
+  font-weight: 500;
+}
+
+.reply-input-box textarea {
+  width: 100%;
+  height: 60px;
+  padding: 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+}
+
+.sub-reply-input {
+  margin-top: 5px;
+  display: flex;
+  gap: 5px;
+}
+
+.sub-reply-input input {
+  flex: 1;
+  padding: 5px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+}
+
+.reply-actions {
+  margin-top: 5px;
+  display: flex;
+  gap: 10px;
+}
+
+.btn-submit {
+  background: #1976d2;
+  color: white;
+  border: none;
+  padding: 4px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.btn-cancel {
+  background: #ddd;
+  color: #333;
+  border: none;
+  padding: 4px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.modal-content {
+  background: white;
+  padding: 20px;
+  border-radius: 8px;
+  width: 400px;
+}
+
+.input-title {
+  width: 100%;
+  padding: 8px;
+  margin-bottom: 10px;
+}
+
+.input-content {
+  width: 100%;
+  height: 100px;
+  padding: 8px;
+  margin-bottom: 10px;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
 }
 </style>

@@ -84,9 +84,21 @@ const routes = [
     meta: { requiresAuth: true, role: "teacher" },
   },
   {
+    path: "/teacher/forum",
+    name: "TeacherForum",
+    component: Forum,
+    meta: { requiresAuth: true, role: "teacher" },
+  },
+  {
     path: "/admin",
     name: "AdminDashboard",
     component: AdminDashboard,
+    meta: { requiresAuth: true, role: "admin" },
+  },
+  {
+    path: "/admin/forum",
+    name: "AdminForum",
+    component: Forum,
     meta: { requiresAuth: true, role: "admin" },
   },
 ];

@@ -32,6 +32,12 @@
             <span>作业批改</span>
             <el-badge :value="pendingCount" class="badge-item" v-if="pendingCount > 0" />
           </el-menu-item>
+          <el-menu-item index="forum">
+            <el-icon>
+              <ChatDotRound />
+            </el-icon>
+            <span>讨论区管理</span>
+          </el-menu-item>
         </el-menu>
       </el-aside>
 
@@ -206,6 +212,11 @@
             </el-table>
           </el-card>
         </div>
+
+        <div v-if="activeTab === 'forum'" class="tab-content fade-in">
+          <Forum />
+        </div>
+
       </el-main>
     </el-container>
 
@@ -233,7 +244,8 @@ import { ref, reactive, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import axios from 'axios'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { DataLine, Reading, EditPen, Check } from '@element-plus/icons-vue'
+import { DataLine, Reading, EditPen, Check, ChatDotRound } from '@element-plus/icons-vue'
+import Forum from '../student/Forum.vue'
 
 const router = useRouter()
 const activeTab = ref('monitor')
@@ -261,7 +273,8 @@ const pageTitle = computed(() => {
     monitor: '班级学情监控中心',
     course: '课程发布中心',
     homework: '作业与题库管理',
-    grading: '作业批改控制台'
+    grading: '作业批改控制台',
+    forum: '课程讨论区'
   }
   return map[activeTab.value]
 })

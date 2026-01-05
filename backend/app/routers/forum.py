@@ -22,6 +22,7 @@ class PostCreate(BaseModel):
 
 class ReplyCreate(BaseModel):
     content: str
+    parent_id: Optional[int] = None
 
 class ReplyResponse(BaseModel):
     id: int
@@ -29,6 +30,8 @@ class ReplyResponse(BaseModel):
     author_name: str
     role: str
     created_at: datetime
+    parent_id: Optional[int]
+    is_hidden: bool
     
     class Config:
         from_attributes = True
@@ -51,10 +54,6 @@ class PostResponse(BaseModel):
 
 @router.get("/posts", response_model=List[PostResponse])
 def get_posts(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    """
-    获取帖子列表
-    包含：是否置顶排序、点赞数统计、当前用户是否已赞、所有回复
-    """
     posts = db.query(ForumPost).order_by(
         ForumPost.is_pinned.desc(), 
         ForumPost.created_at.desc()
@@ -75,13 +74,18 @@ def get_posts(current_user: User = Depends(get_current_user), db: Session = Depe
         
         replies_fmt = []
         for r in replies_db:
+            if r.is_hidden and current_user.role == 'student' and r.author_id != current_user.id:
+                continue
+
             r_author = db.query(User).filter(User.id == r.author_id).first()
             replies_fmt.append({
                 "id": r.id,
                 "content": r.content,
                 "author_name": r_author.full_name if r_author else "未知用户",
                 "role": r_author.role if r_author else "student",
-                "created_at": r.created_at
+                "created_at": r.created_at,
+                "parent_id": r.parent_id,
+                "is_hidden": r.is_hidden
             })
 
         author = db.query(User).filter(User.id == p.author_id).first()
@@ -103,9 +107,8 @@ def get_posts(current_user: User = Depends(get_current_user), db: Session = Depe
 
 @router.post("/posts")
 def create_post(post: PostCreate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    """发布新帖子"""
     if current_user.is_silenced:
-        raise HTTPException(status_code=403, detail="您已被禁言，无法发布内容")
+        raise HTTPException(status_code=403, detail="您已被禁言")
     
     new_post = ForumPost(
         title=post.title,
@@ -122,7 +125,6 @@ def create_post(post: PostCreate, current_user: User = Depends(get_current_user)
 
 @router.delete("/posts/{post_id}")
 def delete_post(post_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    """删除帖子 (仅限本人、教师、管理员)"""
     post = db.query(ForumPost).filter(ForumPost.id == post_id).first()
     if not post:
         raise HTTPException(status_code=404, detail="帖子不存在")
@@ -139,7 +141,6 @@ def delete_post(post_id: int, current_user: User = Depends(get_current_user), db
 
 @router.put("/posts/{post_id}/pin")
 def toggle_pin(post_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    """置顶/取消置顶 (仅限教师、管理员)"""
     if current_user.role not in ['teacher', 'admin']:
         raise HTTPException(status_code=403, detail="权限不足")
         
@@ -147,13 +148,11 @@ def toggle_pin(post_id: int, current_user: User = Depends(get_current_user), db:
     if post:
         post.is_pinned = not post.is_pinned
         db.commit()
-        status = "已置顶" if post.is_pinned else "已取消置顶"
-        return {"msg": status, "current_status": post.is_pinned}
+        return {"msg": "操作成功", "current_status": post.is_pinned}
     return {"msg": "帖子不存在"}
 
 @router.post("/posts/{post_id}/like")
 def toggle_like(post_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    """点赞/取消点赞"""
     existing = db.query(PostLike).filter(
         PostLike.post_id == post_id, 
         PostLike.user_id == current_user.id
@@ -174,9 +173,8 @@ def toggle_like(post_id: int, current_user: User = Depends(get_current_user), db
 
 @router.post("/posts/{post_id}/reply")
 def create_reply(post_id: int, reply: ReplyCreate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    """回复帖子"""
     if current_user.is_silenced:
-        raise HTTPException(status_code=403, detail="您已被禁言，无法回复")
+        raise HTTPException(status_code=403, detail="您已被禁言")
         
     post = db.query(ForumPost).filter(ForumPost.id == post_id).first()
     if not post:
@@ -185,8 +183,39 @@ def create_reply(post_id: int, reply: ReplyCreate, current_user: User = Depends(
     new_reply = ForumReply(
         post_id=post_id, 
         author_id=current_user.id, 
-        content=reply.content
+        content=reply.content,
+        parent_id=reply.parent_id,
+        is_hidden=False
     )
     db.add(new_reply)
     db.commit()
     return {"msg": "回复成功"}
+
+@router.put("/replies/{reply_id}/hide")
+def toggle_reply_hide(reply_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if current_user.role not in ['teacher', 'admin']:
+        raise HTTPException(status_code=403, detail="权限不足")
+        
+    reply = db.query(ForumReply).filter(ForumReply.id == reply_id).first()
+    if not reply:
+        raise HTTPException(status_code=404, detail="评论不存在")
+        
+    reply.is_hidden = not reply.is_hidden
+    db.commit()
+    return {"msg": "操作成功", "is_hidden": reply.is_hidden}
+
+@router.delete("/replies/{reply_id}")
+def delete_reply(reply_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    reply = db.query(ForumReply).filter(ForumReply.id == reply_id).first()
+    if not reply:
+        raise HTTPException(status_code=404, detail="评论不存在")
+        
+    is_owner = current_user.id == reply.author_id
+    is_manager = current_user.role in ['teacher', 'admin']
+    
+    if not (is_owner or is_manager):
+        raise HTTPException(status_code=403, detail="权限不足")
+        
+    db.delete(reply)
+    db.commit()
+    return {"msg": "已删除"}
